@@ -3,11 +3,13 @@ import Header from '@/components/Header'
 import InputBox from '@/components/InputBox/InputBox'
 import MessageList, { type MessageListRef } from '@/components/MessageList'
 import ThreadHistoryDrawer from '@/components/ThreadHistoryDrawer'
+import { ConversationTreeView } from '@/components/conversation-tree'
 import { updateSession as updateSessionStore, useSession } from '@/stores/chatStore'
 import { lastUsedModelStore } from '@/stores/lastUsedModelStore'
 import * as scrollActions from '@/stores/scrollActions'
 import { modifyMessage, removeCurrentThread, startNewThread, submitNewUserMessage } from '@/stores/sessionActions'
 import { getAllMessageList } from '@/stores/sessionHelpers'
+import { useViewModeStore } from '@/stores/viewModeStore'
 import NiceModal from '@ebay/nice-modal-react'
 import { Button } from '@mantine/core'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
@@ -27,6 +29,7 @@ function RouteComponent() {
   const { session: currentSession, isFetching } = useSession(currentSessionId)
   const setLastUsedChatModel = useStore(lastUsedModelStore, (state) => state.setChatModel)
   const setLastUsedPictureModel = useStore(lastUsedModelStore, (state) => state.setPictureModel)
+  const viewMode = useViewModeStore((s) => s.viewMode)
 
   const currentMessageList = useMemo(() => (currentSession ? getAllMessageList(currentSession) : []), [currentSession])
   const lastGeneratingMessage = useMemo(
@@ -151,8 +154,18 @@ function RouteComponent() {
     <div className="flex flex-col h-full">
       <Header session={currentSession} />
 
-      {/* MessageList 设置 key，确保每个 session 对应新的 MessageList 实例 */}
-      <MessageList ref={messageListRef} key={`message-list${currentSessionId}`} currentSession={currentSession} />
+      {/* 根据视图模式显示不同的视图 */}
+      {viewMode === 'list' ? (
+        <MessageList ref={messageListRef} key={`message-list${currentSessionId}`} currentSession={currentSession} />
+      ) : (
+        <div className="flex-1 min-h-0">
+          <ConversationTreeView
+            key={`tree-view${currentSessionId}`}
+            session={currentSession}
+            className="h-full"
+          />
+        </div>
+      )}
 
       {/* <ScrollButtons /> */}
       <ErrorBoundary name="session-inputbox">

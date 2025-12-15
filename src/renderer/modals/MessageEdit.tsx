@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { type Message, type MessageContentParts, type MessageRole, MessageRoleEnum } from '@/../shared/types'
 import { AssistantAvatar, SystemAvatar, UserAvatar } from '@/components/Avatar'
 import { useIsSmallScreen } from '@/hooks/useScreenChange'
-import { generateMoreInNewFork, modifyMessage } from '@/stores/sessionActions'
+import { modifyMessage, saveAndResendWithFork } from '@/stores/sessionActions'
 
 const MessageEdit = NiceModal.create((props: { sessionId: string; msg: Message }) => {
   const modal = useModal()
@@ -74,8 +74,11 @@ const MessageEditModal = ({
     if (!msg) {
       return
     }
-    onSave()
-    void generateMoreInNewFork(sessionId, msg.id)
+    // 使用 saveAndResendWithFork 在父消息处创建分支
+    // 这样原 User 消息会保留在旧分支，修改后的消息在新分支
+    // 节点视图可以显示 User 消息的不同版本
+    void saveAndResendWithFork(sessionId, origMsg.id, msg)
+    onClose()
   }
 
   const onContentPartInput = (index: number, text: string) => {

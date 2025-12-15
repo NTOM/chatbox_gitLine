@@ -912,6 +912,67 @@ export async function generateMoreInNewFork(sessionId: string, msgId: string) {
   await generateMore(sessionId, msgId)
 }
 
+/**
+ * 保存修改后的消息并在新分支中重新发送
+ * 与 generateMoreInNewFork 不同，此函数会在父消息处创建分支，
+ * 这样原消息会被保留在旧分支中，而修改后的消息会出现在新分支中。
+ * 这使得节点视图可以显示 User 消息的不同版本。
+ *
+ * @param sessionId 会话ID
+ * @param originalMsgId 原始消息ID
+ * @param updatedMsg 修改后的消息对象
+ */
+export async function saveAndResendWithFork(
+  sessionId: string,
+  originalMsgId: string,
+  updatedMsg: Message
+) {
+  const session = await chatStore.getSession(sessionId)
+  if (!session) return
+
+  // 1. 找到原消息的位置
+  const location = findMessageLocation(session, originalMsgId)
+  if (!location) {
+    // 找不到消息，退回到原有逻辑
+    await modifyMessage(sessionId, updatedMsg, true)
+    await generateMoreInNewFork(sessionId, originalMsgId)
+    return
+  }
+
+  // 2. 找到父消息（前一条消息）
+  const parentMsgIndex = location.index - 1
+  if (parentMsgIndex < 0) {
+    // 如果是第一条消息（没有父消息），退回到原有逻辑
+    await modifyMessage(sessionId, updatedMsg, true)
+    await generateMoreInNewFork(sessionId, originalMsgId)
+    return
+  }
+
+  const parentMsg = location.list[parentMsgIndex]
+
+  // 3. 在父消息处创建分支
+  // 这会将原 User 消息及其后续内容备份到旧分支，新分支为空
+  await createNewFork(sessionId, parentMsg.id)
+
+  // 4. 在新分支中插入修改后的 User 消息（使用新 ID）
+  const newUserMsg = createMessage(updatedMsg.role, '')
+  newUserMsg.contentParts = updatedMsg.contentParts
+  newUserMsg.files = updatedMsg.files
+  newUserMsg.links = updatedMsg.links
+  newUserMsg.wordCount = countMessageWords(newUserMsg)
+  newUserMsg.tokenCount = estimateTokensFromMessages([newUserMsg])
+
+  await insertMessageAfter(sessionId, newUserMsg, parentMsg.id)
+
+  // 5. 创建新的 Assistant 消息并生成回复
+  const newAssistantMsg = createMessage('assistant', '')
+  newAssistantMsg.generating = true
+  await insertMessageAfter(sessionId, newAssistantMsg, newUserMsg.id)
+
+  // 6. 生成回复
+  await generate(sessionId, newAssistantMsg, { operationType: 'send_message' })
+}
+
 type MessageLocation = { list: Message[]; index: number }
 
 function findMessageLocation(session: Session, messageId: string): MessageLocation | null {

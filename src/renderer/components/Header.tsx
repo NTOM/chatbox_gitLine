@@ -13,6 +13,7 @@ import * as settingActions from '../stores/settingActions'
 import { ScalableIcon } from './ScalableIcon'
 import Toolbar from './Toolbar'
 import WindowControls from './WindowControls'
+import { ViewModeSwitch } from './conversation-tree'
 
 export default function Header(props: { session: Session }) {
   const { t } = useTranslation()
@@ -95,6 +96,9 @@ export default function Header(props: { session: Session }) {
           </ActionIcon>
         </Tooltip>
       </Flex>
+
+      {/* 视图模式切换按钮 */}
+      {!isSmallScreen && <ViewModeSwitch className="mr-2" />}
 
       <Toolbar sessionId={currentSession.id} />
 
