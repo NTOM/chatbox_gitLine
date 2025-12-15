@@ -3,8 +3,24 @@ import { getLogger } from '../lib/utils'
 
 const log = getLogger('GlobalErrorHandler')
 
+// 检查是否为 ResizeObserver 无害错误
+const isResizeObserverError = (message?: string): boolean => {
+  if (!message) return false
+  return (
+    message.includes('ResizeObserver loop completed with undelivered notifications') ||
+    message.includes('ResizeObserver loop limit exceeded')
+  )
+}
+
 // Global error handler for unhandled errors
 window.addEventListener('error', (event) => {
+  // 忽略 ResizeObserver 的无害错误
+  if (isResizeObserverError(event.message)) {
+    event.preventDefault()
+    event.stopPropagation()
+    return
+  }
+
   log.error('Global error caught:', event.error)
 
   Sentry.withScope((scope) => {
@@ -49,6 +65,12 @@ const reportedErrors = new WeakSet()
 const reportedMessages = new Set<string>()
 
 console.error = (...args: unknown[]) => {
+  // 检查是否为 ResizeObserver 无害错误，直接忽略不打印
+  const firstArg = args[0]
+  if (typeof firstArg === 'string' && isResizeObserverError(firstArg)) {
+    return // 完全抑制 ResizeObserver 错误
+  }
+
   // Still call the original console.error
   originalConsoleError.apply(console, args)
 

@@ -1412,6 +1412,165 @@ function buildSwitchForkPatch(
   }
 }
 
+/**
+ * 切换到包含指定消息的分支
+ * @param sessionId 会话 ID
+ * @param targetMessageId 目标消息 ID（分支中的消息）
+ */
+export async function switchToMessageBranch(sessionId: string, targetMessageId: string) {
+  await chatStore.updateSessionWithMessages(sessionId, (session) => {
+    if (!session) {
+      throw new Error('Session not found')
+    }
+    const patch = buildSwitchToMessageBranchPatch(session, targetMessageId)
+    if (!patch) {
+      return session
+    }
+    return {
+      ...session,
+      ...patch,
+    } as typeof session
+  })
+}
+
+function buildSwitchToMessageBranchPatch(
+  session: Session,
+  targetMessageId: string
+): Partial<Session> | null {
+  const { messageForksHash } = session
+  if (!messageForksHash) {
+    return null
+  }
+
+  // 遍历所有分叉点，找到包含目标消息的分支
+  for (const [forkMessageId, forkEntry] of Object.entries(messageForksHash)) {
+    // 检查每个分支列表
+    for (let branchIndex = 0; branchIndex < forkEntry.lists.length; branchIndex++) {
+      const branch = forkEntry.lists[branchIndex]
+      // 检查分支中是否包含目标消息
+      const hasTargetMessage = branch.messages.some(m => m.id === targetMessageId)
+      
+      if (hasTargetMessage && branchIndex !== forkEntry.position) {
+        // 找到了目标分支，且不是当前分支，执行切换
+        const result = switchForkToPosition(session, forkMessageId, forkEntry, branchIndex)
+        if (result) {
+          return result
+        }
+      }
+    }
+  }
+
+  return null
+}
+
+function switchForkToPosition(
+  session: Session,
+  forkMessageId: string,
+  forkEntry: MessageForkEntry,
+  targetPosition: number
+): Partial<Session> | null {
+  const { messageForksHash } = session
+  if (!messageForksHash) {
+    return null
+  }
+
+  // 在主消息列表中查找
+  const rootResult = switchForkInMessagesToPosition(
+    session.messages,
+    forkEntry,
+    forkMessageId,
+    targetPosition
+  )
+  if (rootResult) {
+    const { messages, fork } = rootResult
+    return {
+      messages,
+      messageForksHash: {
+        ...messageForksHash,
+        [forkMessageId]: fork,
+      },
+    }
+  }
+
+  // 在 threads 中查找
+  if (!session.threads?.length) {
+    return null
+  }
+
+  let updatedFork: MessageForkEntry | null = null
+  const updatedThreads = session.threads.map((thread) => {
+    if (updatedFork) {
+      return thread
+    }
+    const result = switchForkInMessagesToPosition(
+      thread.messages,
+      forkEntry,
+      forkMessageId,
+      targetPosition
+    )
+    if (!result) {
+      return thread
+    }
+    updatedFork = result.fork
+    return {
+      ...thread,
+      messages: result.messages,
+    }
+  })
+
+  if (!updatedFork) {
+    return null
+  }
+
+  return {
+    threads: updatedThreads,
+    messageForksHash: {
+      ...messageForksHash,
+      [forkMessageId]: updatedFork,
+    },
+  }
+}
+
+function switchForkInMessagesToPosition(
+  messages: Message[],
+  forkEntry: MessageForkEntry,
+  forkMessageId: string,
+  targetPosition: number
+): { messages: Message[]; fork: MessageForkEntry } | null {
+  const forkMessageIndex = messages.findIndex((m) => m.id === forkMessageId)
+  if (forkMessageIndex < 0) {
+    return null
+  }
+
+  const currentTail = messages.slice(forkMessageIndex + 1)
+  const branchMessages = forkEntry.lists[targetPosition]?.messages ?? []
+
+  const updatedFork: MessageForkEntry = {
+    ...forkEntry,
+    position: targetPosition,
+    lists: forkEntry.lists.map((list, index) => {
+      if (index === forkEntry.position && forkEntry.position !== targetPosition) {
+        return {
+          ...list,
+          messages: currentTail,
+        }
+      }
+      if (index === targetPosition) {
+        return {
+          ...list,
+          messages: [],
+        }
+      }
+      return list
+    }),
+  }
+
+  return {
+    messages: messages.slice(0, forkMessageIndex + 1).concat(branchMessages),
+    fork: updatedFork,
+  }
+}
+
 function switchForkInMessages(
   messages: Message[],
   forkEntry: MessageForkEntry,

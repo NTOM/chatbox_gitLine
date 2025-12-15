@@ -15,6 +15,8 @@ export type TreeNodeType = 'system' | 'user' | 'assistant'
 export interface TreeNodeData extends Record<string, unknown> {
   message: Message
   type: TreeNodeType
+  /** 会话ID */
+  sessionId: string
   /** 是否在当前活跃路径上 */
   isActivePath: boolean
   /** 在同级分支中的索引 */
@@ -33,7 +35,7 @@ export interface TreeNodeData extends Record<string, unknown> {
 export type ConversationNode = Node<TreeNodeData, TreeNodeType>
 
 /** 边数据类型 */
-export interface ConversationEdgeData {
+export interface ConversationEdgeData extends Record<string, unknown> {
   isActivePath: boolean
   branchIndex: number
 }
@@ -60,6 +62,7 @@ interface TreeBuildContext {
   edges: ConversationEdge[]
   activePathIds: Set<string>
   depth: number
+  sessionId: string
 }
 
 // ============ 核心转换函数 ============
@@ -73,6 +76,7 @@ export function sessionToConversationTree(session: Session): ConversationTree {
     edges: [],
     activePathIds: new Set(),
     depth: 0,
+    sessionId: session.id,
   }
 
   if (!session.messages || session.messages.length === 0) {
@@ -103,6 +107,7 @@ export function sessionToConversationTree(session: Session): ConversationTree {
     
     // 创建节点
     const node = createNode(message, {
+      sessionId: session.id,
       isActivePath,
       branchIndex: 0,
       branchCount: hasFork ? forkData.lists.length : 1,
@@ -181,6 +186,7 @@ function processForks(
       const hasNestedFork = nestedFork && nestedFork.lists.length > 1
 
       const node = createNode(message, {
+        sessionId: session.id,
         isActivePath,
         branchIndex,
         branchCount: lists.length,
@@ -233,6 +239,7 @@ function buildActivePathIds(session: Session): Set<string> {
 function createNode(
   message: Message,
   options: {
+    sessionId: string
     isActivePath: boolean
     branchIndex: number
     branchCount: number
@@ -250,6 +257,7 @@ function createNode(
     data: {
       message,
       type,
+      sessionId: options.sessionId,
       isActivePath: options.isActivePath,
       branchIndex: options.branchIndex,
       branchCount: options.branchCount,
