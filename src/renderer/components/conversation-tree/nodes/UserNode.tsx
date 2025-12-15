@@ -3,10 +3,11 @@
  */
 
 import { memo } from 'react'
-import { Handle, Position, type Node } from '@xyflow/react'
-import { IconUser } from '@tabler/icons-react'
+import { Handle, Position } from '@xyflow/react'
+import { IconUser, IconGitBranch } from '@tabler/icons-react'
 import type { TreeNodeData } from '@/lib/conversation-tree-adapter'
 import { getMessagePreviewText } from '@/lib/conversation-tree-adapter'
+import { getBranchColor } from '../utils/branchColors'
 import { cn } from '@/lib/utils'
 import dayjs from 'dayjs'
 
@@ -20,6 +21,9 @@ function UserNodeComponent({ data, selected }: UserNodeProps) {
   const timestamp = data.message.timestamp
     ? dayjs(data.message.timestamp).format('HH:mm')
     : ''
+  
+  const isBranch = data.branchCount > 1
+  const branchColor = isBranch ? getBranchColor(data.branchIndex) : null
 
   return (
     <div
@@ -30,12 +34,17 @@ function UserNodeComponent({ data, selected }: UserNodeProps) {
         !data.isActivePath && 'opacity-60',
         selected && 'border-blue-500 shadow-lg'
       )}
+      style={isBranch && !data.isActivePath ? {
+        borderColor: branchColor?.border,
+        backgroundColor: branchColor?.bg,
+      } : undefined}
     >
       {/* 顶部连接点 */}
       <Handle
         type="target"
         position={Position.Top}
         className="!bg-blue-400 !w-3 !h-3"
+        style={isBranch && !data.isActivePath ? { backgroundColor: branchColor?.border } : undefined}
       />
 
       {/* 头部 */}
@@ -66,9 +75,13 @@ function UserNodeComponent({ data, selected }: UserNodeProps) {
       )}
 
       {/* 分支指示器 */}
-      {data.branchCount > 1 && (
-        <div className="mt-2 text-xs text-orange-500 flex items-center gap-1">
-          🔀 Branch {data.branchIndex + 1}/{data.branchCount}
+      {isBranch && (
+        <div 
+          className="mt-2 text-xs flex items-center gap-1 font-medium"
+          style={{ color: branchColor?.text }}
+        >
+          <IconGitBranch size={12} />
+          Branch {data.branchIndex + 1}/{data.branchCount}
         </div>
       )}
 
@@ -77,6 +90,7 @@ function UserNodeComponent({ data, selected }: UserNodeProps) {
         type="source"
         position={Position.Bottom}
         className="!bg-blue-400 !w-3 !h-3"
+        style={isBranch && !data.isActivePath ? { backgroundColor: branchColor?.border } : undefined}
       />
     </div>
   )

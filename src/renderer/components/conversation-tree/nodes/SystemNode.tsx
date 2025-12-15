@@ -3,7 +3,7 @@
  */
 
 import { memo } from 'react'
-import { Handle, Position, type Node } from '@xyflow/react'
+import { Handle, Position } from '@xyflow/react'
 import { IconSettings } from '@tabler/icons-react'
 import type { TreeNodeData } from '@/lib/conversation-tree-adapter'
 import { getMessagePreviewText } from '@/lib/conversation-tree-adapter'

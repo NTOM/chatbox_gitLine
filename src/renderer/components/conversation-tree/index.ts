@@ -5,3 +5,4 @@
 export { ConversationTreeView, default } from './ConversationTreeView'
 export { ViewModeSwitch } from './ViewModeSwitch'
 export { nodeTypes } from './nodes'
+export { edgeTypes } from './edges'

@@ -3,10 +3,11 @@
  */
 
 import { memo } from 'react'
-import { Handle, Position, type Node } from '@xyflow/react'
-import { IconRobot, IconLoader2 } from '@tabler/icons-react'
+import { Handle, Position } from '@xyflow/react'
+import { IconRobot, IconLoader2, IconGitBranch, IconGitFork } from '@tabler/icons-react'
 import type { TreeNodeData } from '@/lib/conversation-tree-adapter'
 import { getMessagePreviewText } from '@/lib/conversation-tree-adapter'
+import { getBranchColor } from '../utils/branchColors'
 import { cn } from '@/lib/utils'
 import dayjs from 'dayjs'
 
@@ -22,6 +23,9 @@ function AssistantNodeComponent({ data, selected }: AssistantNodeProps) {
     : ''
   const isGenerating = data.message.generating
   const hasError = !!data.message.error
+  
+  const isBranch = data.branchCount > 1
+  const branchColor = isBranch ? getBranchColor(data.branchIndex) : null
 
   return (
     <div
@@ -33,12 +37,17 @@ function AssistantNodeComponent({ data, selected }: AssistantNodeProps) {
         hasError && 'border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/30',
         selected && 'border-green-500 shadow-lg'
       )}
+      style={isBranch && !data.isActivePath && !hasError ? {
+        borderColor: branchColor?.border,
+        backgroundColor: branchColor?.bg,
+      } : undefined}
     >
       {/* 顶部连接点 */}
       <Handle
         type="target"
         position={Position.Top}
         className={cn('!w-3 !h-3', hasError ? '!bg-red-400' : '!bg-green-400')}
+        style={isBranch && !data.isActivePath && !hasError ? { backgroundColor: branchColor?.border } : undefined}
       />
 
       {/* 头部 */}
@@ -98,16 +107,21 @@ function AssistantNodeComponent({ data, selected }: AssistantNodeProps) {
       )}
 
       {/* 分支指示器 */}
-      {data.branchCount > 1 && (
-        <div className="mt-2 text-xs text-orange-500 flex items-center gap-1">
-          🔀 Branch {data.branchIndex + 1}/{data.branchCount}
+      {isBranch && (
+        <div 
+          className="mt-2 text-xs flex items-center gap-1 font-medium"
+          style={{ color: branchColor?.text }}
+        >
+          <IconGitBranch size={12} />
+          Branch {data.branchIndex + 1}/{data.branchCount}
         </div>
       )}
 
       {/* 子分支指示器 */}
       {data.childrenCount > 1 && (
         <div className="mt-1 text-xs text-purple-500 flex items-center gap-1">
-          🌿 {data.childrenCount} branches below
+          <IconGitFork size={12} />
+          {data.childrenCount} branches below
         </div>
       )}
 
@@ -116,6 +130,7 @@ function AssistantNodeComponent({ data, selected }: AssistantNodeProps) {
         type="source"
         position={Position.Bottom}
         className={cn('!w-3 !h-3', hasError ? '!bg-red-400' : '!bg-green-400')}
+        style={isBranch && !data.isActivePath && !hasError ? { backgroundColor: branchColor?.border } : undefined}
       />
     </div>
   )

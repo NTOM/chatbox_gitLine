@@ -24,6 +24,7 @@ import { sessionToConversationTree, debugPrintTree, type TreeNodeData } from '@/
 import { applyTreeLayout } from '@/lib/tree-layout'
 import { useViewModeStore } from '@/stores/viewModeStore'
 import { nodeTypes } from './nodes'
+import { edgeTypes } from './edges'
 import { cn } from '@/lib/utils'
 
 // ============ 类型定义 ============
@@ -125,13 +126,13 @@ function ConversationTreeViewInner({ session, className }: ConversationTreeViewP
         onNodeContextMenu={handleNodeContextMenu}
         onPaneClick={handlePaneClick}
         nodeTypes={nodeTypes as any}
+        edgeTypes={edgeTypes as any}
         fitView
         fitViewOptions={{ padding: 0.2 }}
         minZoom={0.1}
         maxZoom={2}
         defaultEdgeOptions={{
-          type: 'smoothstep',
-          animated: false,
+          type: 'default',
         }}
         proOptions={{ hideAttribution: true }}
       >

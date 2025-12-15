@@ -32,8 +32,14 @@ export interface TreeNodeData extends Record<string, unknown> {
 /** ReactFlow 节点类型 */
 export type ConversationNode = Node<TreeNodeData, TreeNodeType>
 
+/** 边数据类型 */
+export interface ConversationEdgeData {
+  isActivePath: boolean
+  branchIndex: number
+}
+
 /** ReactFlow 边类型 */
-export type ConversationEdge = Edge<{ isActivePath: boolean }>
+export type ConversationEdge = Edge<ConversationEdgeData>
 
 /** 对话树结构 */
 export interface ConversationTree {
@@ -109,7 +115,7 @@ export function sessionToConversationTree(session: Session): ConversationTree {
 
     // 创建边
     if (prevNodeId) {
-      context.edges.push(createEdge(prevNodeId, message.id, isActivePath))
+      context.edges.push(createEdge(prevNodeId, message.id, isActivePath, 0))
     }
 
     // 如果有分支，递归处理分支
@@ -184,7 +190,7 @@ function processForks(
       })
 
       context.nodes.push(node)
-      context.edges.push(createEdge(prevNodeId, message.id, isActivePath))
+      context.edges.push(createEdge(prevNodeId, message.id, isActivePath, branchIndex))
 
       // 递归处理嵌套分支
       if (hasNestedFork) {
@@ -257,14 +263,29 @@ function createNode(
 /**
  * 创建 ReactFlow 边
  */
-function createEdge(sourceId: string, targetId: string, isActivePath: boolean): ConversationEdge {
+function createEdge(
+  sourceId: string,
+  targetId: string,
+  isActivePath: boolean,
+  branchIndex = 0
+): ConversationEdge {
+  // 根据状态选择边类型
+  let edgeType: string
+  if (isActivePath) {
+    edgeType = 'activePath'
+  } else if (branchIndex > 0) {
+    edgeType = 'branch'
+  } else {
+    edgeType = 'default'
+  }
+
   return {
     id: `${sourceId}->${targetId}`,
     source: sourceId,
     target: targetId,
-    type: isActivePath ? 'activePath' : 'default',
-    data: { isActivePath },
-    animated: isActivePath,
+    type: edgeType,
+    data: { isActivePath, branchIndex },
+    animated: false, // 动画由自定义边组件控制
   }
 }
 
