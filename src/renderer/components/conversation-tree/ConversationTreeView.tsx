@@ -13,9 +13,11 @@ import {
   useNodesState,
   useEdgesState,
   useReactFlow,
+  useOnViewportChange,
   ReactFlowProvider,
   type Node,
   type Connection,
+  type NodeChange,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 
@@ -32,16 +34,17 @@ import NodeCreatePopover from './NodeCreatePopover'
 import { insertMessageAfter, generateMore, switchFork, createNewFork, regenerateInNewFork } from '@/stores/sessionActions'
 import { createMessage } from 'src/shared/types'
 
+// ============ 常量 ============
+
+const EMPTY_POSITIONS: Record<string, { x: number; y: number }> = {}
+
 // ============ 类型定义 ============
 
 export interface ConversationTreeViewProps {
   session: Session
   className?: string
-  /** 创建 User 节点回调 */
   onCreateUserNode?: (content: string, targetMessageId: string) => void
-  /** 创建 Assistant 节点回调 */
   onCreateAssistantNode?: (targetMessageId: string) => void
-  /** 使用底部输入框回调 */
   onUseBottomInput?: (targetMessageId: string) => void
 }
 
@@ -55,11 +58,19 @@ function ConversationTreeViewInner({
   onUseBottomInput,
 }: ConversationTreeViewProps) {
   const { fitView } = useReactFlow()
+  
+  // Store selectors
   const setSelectedNodeId = useViewModeStore((s) => s.setSelectedNodeId)
   const selectedNodeId = useViewModeStore((s) => s.selectedNodeId)
+  const updateNodePosition = useViewModeStore((s) => s.updateNodePosition)
+  const updateNodePositions = useViewModeStore((s) => s.updateNodePositions)
+  const nodePositionsFromStore = useViewModeStore((s) => s.nodePositions[session.id]) ?? EMPTY_POSITIONS
   const setQuote = useUIStore((state) => state.setQuote)
+  
+  // Refs
   const prevSessionRef = useRef<string | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const pendingPositionSaveRef = useRef<Record<string, { x: number; y: number }>>({})
   
   // 消息详情抽屉状态
   const [drawerOpened, setDrawerOpened] = useState(false)
@@ -75,70 +86,21 @@ function ConversationTreeViewInner({
   const tree = useMemo(() => {
     const rawTree = sessionToConversationTree(session)
     const layoutedTree = applyTreeLayout(rawTree)
-
-    // 开发环境下打印调试信息
     if (process.env.NODE_ENV === 'development') {
       debugPrintTree(layoutedTree)
     }
-
     return layoutedTree
   }, [session])
 
-  // ReactFlow 状态 - 使用 any 类型避免复杂的泛型问题
+  // ReactFlow 状态
   const [nodes, setNodes, onNodesChange] = useNodesState(tree.nodes as any)
   const [edges, setEdges, onEdgesChange] = useEdgesState(tree.edges as any)
 
-  // 当树结构变化时更新节点和边
-  useEffect(() => {
-    // 批量更新节点和边，避免多次渲染
-    const timeoutId = setTimeout(() => {
-      setNodes(tree.nodes as any)
-      setEdges(tree.edges as any)
-    }, 0)
-
-    // 如果是新会话，自动适配视图
-    if (prevSessionRef.current !== session.id) {
-      prevSessionRef.current = session.id
-      setTimeout(() => {
-        fitView({ padding: 0.2, duration: 300 })
-      }, 100)
-    }
-
-    return () => clearTimeout(timeoutId)
-  }, [tree, session.id, setNodes, setEdges, fitView])
-
-  // 监听 Handle 点击事件
-  useEffect(() => {
-    const handleNodeHandleClick = (e: Event) => {
-      const customEvent = e as CustomEvent<{ nodeId: string; nodeType: string; element: HTMLElement }>
-      const { nodeId, element } = customEvent.detail
-      
-      const message = getMessageById(nodeId)
-      if (message) {
-        const isLeaf = isLeafNode(nodeId)
-        setPopoverMessage(message)
-        setPopoverTarget(element)
-        setPopoverIsLeaf(isLeaf)
-        setPopoverOpened(true)
-      }
-    }
-
-    const container = containerRef.current
-    if (container) {
-      container.addEventListener('node-handle-click', handleNodeHandleClick)
-      return () => {
-        container.removeEventListener('node-handle-click', handleNodeHandleClick)
-      }
-    }
-  }, [session.messages, tree.nodes])
-
   // 根据节点 ID 获取消息
   const getMessageById = useCallback((nodeId: string): Message | null => {
-    // 先从主消息列表查找
     const mainMsg = session.messages.find(m => m.id === nodeId)
     if (mainMsg) return mainMsg
     
-    // 再从分支中查找
     if (session.messageForksHash) {
       for (const forkData of Object.values(session.messageForksHash)) {
         for (const branch of forkData.lists) {
@@ -154,59 +116,123 @@ function ConversationTreeViewInner({
   const isLeafNode = useCallback((nodeId: string): boolean => {
     const node = tree.nodes.find(n => n.id === nodeId)
     if (!node) return true
-    const nodeData = node.data as TreeNodeData
-    return !nodeData.hasChildren
+    return !(node.data as TreeNodeData).hasChildren
   }, [tree.nodes])
 
-  // 节点点击处理 - 打开消息详情抽屉
-  const handleNodeClick = useCallback(
-    (_event: React.MouseEvent, node: Node) => {
-      setSelectedNodeId(node.id)
-      const message = getMessageById(node.id)
+  // 查找消息的父消息 ID
+  const findParentMessageId = useCallback((messageId: string): string | null => {
+    const edge = tree.edges.find(e => e.target === messageId)
+    return edge?.source || null
+  }, [tree.edges])
+
+  // 当树结构变化时更新节点和边（保留已有位置）
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      setNodes((currentNodes) => {
+        const currentPositionMap = new Map(currentNodes.map(n => [n.id, n.position]))
+        const newPositionsToSave: Record<string, { x: number; y: number }> = {}
+        
+        const updatedNodes = tree.nodes.map(node => {
+          const currentPosition = currentPositionMap.get(node.id)
+          const savedPosition = nodePositionsFromStore[node.id]
+          const finalPosition = currentPosition || savedPosition || node.position
+          
+          if (!savedPosition && !currentPosition) {
+            newPositionsToSave[node.id] = node.position
+          }
+          
+          return { ...node, position: finalPosition }
+        })
+        
+        if (Object.keys(newPositionsToSave).length > 0) {
+          pendingPositionSaveRef.current = { ...pendingPositionSaveRef.current, ...newPositionsToSave }
+        }
+        
+        return updatedNodes as any
+      })
+      setEdges(tree.edges as any)
+    }, 0)
+
+    // 新会话时自动适配视图
+    if (prevSessionRef.current !== session.id) {
+      prevSessionRef.current = session.id
+      setTimeout(() => fitView({ padding: 0.2, duration: 300 }), 100)
+    }
+
+    return () => clearTimeout(timeoutId)
+  }, [tree, session.id, setNodes, setEdges, fitView, nodePositionsFromStore])
+
+  // 延迟保存新节点位置（避免循环更新）
+  useEffect(() => {
+    const saveTimer = setTimeout(() => {
+      const pendingPositions = pendingPositionSaveRef.current
+      if (Object.keys(pendingPositions).length > 0) {
+        updateNodePositions(session.id, pendingPositions)
+        pendingPositionSaveRef.current = {}
+      }
+    }, 100)
+    return () => clearTimeout(saveTimer)
+  }, [tree.nodes.length, session.id, updateNodePositions])
+
+  // 监听 Handle 点击事件
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+
+    const handleNodeHandleClick = (e: Event) => {
+      const { nodeId, element } = (e as CustomEvent<{ nodeId: string; element: HTMLElement }>).detail
+      const message = getMessageById(nodeId)
       if (message) {
-        setSelectedMessage(message)
-        setDrawerOpened(true)
+        setPopoverMessage(message)
+        setPopoverTarget(element)
+        setPopoverIsLeaf(isLeafNode(nodeId))
+        setPopoverOpened(true)
       }
-    },
-    [setSelectedNodeId, getMessageById]
-  )
+    }
 
-  // 节点双击处理 - 切换到该分支（通过循环切换）
-  const handleNodeDoubleClick = useCallback(
-    (_event: React.MouseEvent, node: Node) => {
-      const nodeData = node.data as TreeNodeData
-      if (!nodeData.isActivePath && nodeData.branchCount > 1) {
-        // 通过循环切换直到到达目标分支
-        // 这里简化处理，直接切换到下一个分支
-        switchFork(session.id, node.id, 'next')
-      }
-    },
-    [session.id]
-  )
+    container.addEventListener('node-handle-click', handleNodeHandleClick)
+    return () => container.removeEventListener('node-handle-click', handleNodeHandleClick)
+  }, [getMessageById, isLeafNode])
 
-  // 节点右键菜单处理
-  const handleNodeContextMenu = useCallback(
-    (event: React.MouseEvent, node: Node) => {
-      event.preventDefault()
-      console.log('Node context menu:', node.id)
-      // TODO: 实现右键菜单
-    },
-    []
-  )
+  // 关闭 Popover
+  const handleClosePopover = useCallback(() => {
+    setPopoverOpened(false)
+    setPopoverTarget(null)
+    setPopoverMessage(null)
+  }, [])
 
-  // 连接点点击处理 - 创建新节点
-  const handleConnect = useCallback(
-    (connection: Connection) => {
-      console.log('Connection attempt:', connection)
-      // 暂不支持手动连接
-    },
-    []
-  )
+  // 画布视口变化时关闭 Popover
+  useOnViewportChange({
+    onChange: useCallback(() => {
+      if (popoverOpened) handleClosePopover()
+    }, [popoverOpened, handleClosePopover]),
+  })
 
-  // 画布点击处理（取消选中）
-  const handlePaneClick = useCallback(() => {
-    setSelectedNodeId(null)
-  }, [setSelectedNodeId])
+  // 节点点击 - 打开详情抽屉
+  const handleNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
+    setSelectedNodeId(node.id)
+    const message = getMessageById(node.id)
+    if (message) {
+      setSelectedMessage(message)
+      setDrawerOpened(true)
+    }
+  }, [setSelectedNodeId, getMessageById])
+
+  // 节点双击 - 切换分支
+  const handleNodeDoubleClick = useCallback((_event: React.MouseEvent, node: Node) => {
+    const nodeData = node.data as TreeNodeData
+    if (!nodeData.isActivePath && nodeData.branchCount > 1) {
+      switchFork(session.id, node.id, 'next')
+    }
+  }, [session.id])
+
+  // 节点拖拽结束 - 保存位置
+  const handleNodeDragStop = useCallback((_event: React.MouseEvent, node: Node) => {
+    updateNodePosition(session.id, node.id, node.position)
+  }, [session.id, updateNodePosition])
+
+  // 画布点击 - 取消选中
+  const handlePaneClick = useCallback(() => setSelectedNodeId(null), [setSelectedNodeId])
 
   // 关闭抽屉
   const handleCloseDrawer = useCallback(() => {
@@ -216,30 +242,11 @@ function ConversationTreeViewInner({
 
   // 处理引用
   const handleQuote = useCallback((quotedText: string) => {
-    const formattedQuote = quotedText
-      .split('\n')
-      .map((line) => `> ${line}`)
-      .join('\n')
+    const formattedQuote = quotedText.split('\n').map(line => `> ${line}`).join('\n')
     setQuote(formattedQuote + '\n\n')
   }, [setQuote])
 
-  // 关闭创建 Popover
-  const handleClosePopover = useCallback(() => {
-    setPopoverOpened(false)
-    setPopoverTarget(null)
-    setPopoverMessage(null)
-  }, [])
-
-  // 查找消息的父消息 ID
-  const findParentMessageId = useCallback((messageId: string): string | null => {
-    // 在树节点中查找父节点
-    const edge = tree.edges.find(e => e.target === messageId)
-    return edge?.source || null
-  }, [tree.edges])
-
-  // 创建 User 节点（并自动触发 AI 回复）
-  // 如果当前节点是 User，则在父节点（Assistant）下创建分支
-  // 如果当前节点是 Assistant，则在当前节点下创建子节点
+  // 创建 User 节点
   const handleCreateUserNode = useCallback(async (content: string, targetMessageId: string) => {
     if (onCreateUserNode) {
       onCreateUserNode(content, targetMessageId)
@@ -250,30 +257,27 @@ function ConversationTreeViewInner({
     if (!targetMessage) return
     
     const newMsg = createMessage('user', content)
+    const isLeaf = isLeafNode(targetMessageId)
     
-    if (targetMessage.role === 'user') {
-      // 当前是 User 节点，需要在父节点（Assistant）下创建新分支
+    if (!isLeaf) {
+      await createNewFork(session.id, targetMessageId)
+      await insertMessageAfter(session.id, newMsg, targetMessageId)
+    } else if (targetMessage.role === 'user') {
       const parentId = findParentMessageId(targetMessageId)
       if (parentId) {
-        // 先创建分支，然后插入消息
         await createNewFork(session.id, parentId)
         await insertMessageAfter(session.id, newMsg, parentId)
       } else {
-        // 没有父节点，直接插入
         await insertMessageAfter(session.id, newMsg, targetMessageId)
       }
     } else {
-      // 当前是 Assistant 节点，正常在其后插入
       await insertMessageAfter(session.id, newMsg, targetMessageId)
     }
     
-    // 自动触发 AI 生成回复
     generateMore(session.id, newMsg.id)
-  }, [session.id, onCreateUserNode, getMessageById, findParentMessageId])
+  }, [session.id, onCreateUserNode, getMessageById, findParentMessageId, isLeafNode])
 
   // 创建 Assistant 节点
-  // 如果当前节点是 Assistant，则在父节点（User）下创建分支（重新生成）
-  // 如果当前节点是 User，则在当前节点下生成回复
   const handleCreateAssistantNode = useCallback(async (targetMessageId: string) => {
     if (onCreateAssistantNode) {
       onCreateAssistantNode(targetMessageId)
@@ -284,37 +288,26 @@ function ConversationTreeViewInner({
     if (!targetMessage) return
     
     if (targetMessage.role === 'assistant') {
-      // 当前是 Assistant 节点，使用 regenerateInNewFork 在父节点下创建新分支
       await regenerateInNewFork(session.id, targetMessage)
     } else {
-      // 当前是 User 节点，正常生成回复
       generateMore(session.id, targetMessageId)
     }
   }, [session.id, onCreateAssistantNode, getMessageById])
 
   // 使用底部输入框
   const handleUseBottomInput = useCallback((targetMessageId: string) => {
-    if (onUseBottomInput) {
-      onUseBottomInput(targetMessageId)
-    }
-    // TODO: 设置底部输入框的目标节点
+    onUseBottomInput?.(targetMessageId)
   }, [onUseBottomInput])
 
   // 小地图节点颜色
   const nodeColor = useCallback((node: Node) => {
     const data = node.data as TreeNodeData | undefined
-    if (!data?.isActivePath) {
-      return '#9ca3af' // gray-400
-    }
+    if (!data?.isActivePath) return '#9ca3af'
     switch (data?.type) {
-      case 'system':
-        return '#6b7280' // gray-500
-      case 'user':
-        return '#3b82f6' // blue-500
-      case 'assistant':
-        return '#22c55e' // green-500
-      default:
-        return '#6b7280'
+      case 'system': return '#6b7280'
+      case 'user': return '#3b82f6'
+      case 'assistant': return '#22c55e'
+      default: return '#6b7280'
     }
   }, [])
 
@@ -327,8 +320,7 @@ function ConversationTreeViewInner({
         onEdgesChange={onEdgesChange}
         onNodeClick={handleNodeClick}
         onNodeDoubleClick={handleNodeDoubleClick}
-        onNodeContextMenu={handleNodeContextMenu}
-        onConnect={handleConnect}
+        onNodeDragStop={handleNodeDragStop}
         onPaneClick={handlePaneClick}
         nodeTypes={nodeTypes as any}
         edgeTypes={edgeTypes as any}
@@ -336,41 +328,16 @@ function ConversationTreeViewInner({
         fitViewOptions={{ padding: 0.2 }}
         minZoom={0.1}
         maxZoom={2}
-        nodesDraggable={false}
+        nodesDraggable
         nodesConnectable={false}
-        elementsSelectable={true}
-        defaultEdgeOptions={{
-          type: 'default',
-        }}
+        elementsSelectable
         proOptions={{ hideAttribution: true }}
       >
-        {/* 控制面板 */}
-        <Controls
-          showZoom
-          showFitView
-          showInteractive={false}
-          position="bottom-right"
-        />
-
-        {/* 小地图 */}
-        <MiniMap
-          nodeColor={nodeColor}
-          nodeStrokeWidth={3}
-          zoomable
-          pannable
-          position="bottom-left"
-        />
-
-        {/* 背景网格 */}
-        <Background
-          variant={BackgroundVariant.Dots}
-          gap={20}
-          size={1}
-          color="#e5e7eb"
-        />
+        <Controls showZoom showFitView showInteractive={false} position="bottom-right" />
+        <MiniMap nodeColor={nodeColor} nodeStrokeWidth={3} zoomable pannable position="bottom-left" />
+        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#e5e7eb" />
       </ReactFlow>
 
-      {/* 消息详情抽屉 */}
       <MessageDetailDrawer
         opened={drawerOpened}
         onClose={handleCloseDrawer}
@@ -379,7 +346,6 @@ function ConversationTreeViewInner({
         onQuote={handleQuote}
       />
 
-      {/* 创建节点 Popover */}
       {popoverMessage && (
         <NodeCreatePopover
           opened={popoverOpened}
@@ -394,7 +360,6 @@ function ConversationTreeViewInner({
         />
       )}
 
-      {/* 空状态提示 */}
       {tree.nodes.length === 0 && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <div className="text-center text-gray-400">
@@ -404,7 +369,6 @@ function ConversationTreeViewInner({
         </div>
       )}
 
-      {/* 调试信息（开发环境） */}
       {process.env.NODE_ENV === 'development' && (
         <div className="absolute top-2 left-2 bg-black/70 text-white text-xs p-2 rounded">
           Nodes: {tree.nodes.length} | Edges: {tree.edges.length}
@@ -417,10 +381,6 @@ function ConversationTreeViewInner({
 
 // ============ 导出组件 ============
 
-/**
- * 对话树视图组件
- * 需要用 ReactFlowProvider 包裹以使用 hooks
- */
 export function ConversationTreeView(props: ConversationTreeViewProps) {
   return (
     <ReactFlowProvider>

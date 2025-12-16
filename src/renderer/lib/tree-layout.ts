@@ -19,9 +19,11 @@ export interface TreeLayoutOptions {
   verticalSpacing?: number
   /** 布局方向: TB (从上到下) | LR (从左到右) */
   direction?: 'TB' | 'LR'
+  /** 已保存的节点位置（用于保留手动调整的位置） */
+  savedPositions?: Record<string, { x: number; y: number }>
 }
 
-const DEFAULT_OPTIONS: Required<TreeLayoutOptions> = {
+const DEFAULT_OPTIONS: Required<Omit<TreeLayoutOptions, 'savedPositions'>> = {
   nodeWidth: 280,
   nodeHeight: 120,
   horizontalSpacing: 50,
@@ -33,6 +35,7 @@ const DEFAULT_OPTIONS: Required<TreeLayoutOptions> = {
 
 /**
  * 对对话树应用自动布局
+ * 如果提供了 savedPositions，已保存位置的节点将保持不变，只对新节点应用自动布局
  * @param tree 对话树
  * @param options 布局选项
  * @returns 带有计算位置的新树结构
@@ -46,7 +49,107 @@ export function applyTreeLayout(
   }
 
   const opts = { ...DEFAULT_OPTIONS, ...options }
+  const savedPositions = options.savedPositions || {}
 
+  // 分离已有位置的节点和需要布局的新节点
+  const nodesWithSavedPosition: ConversationNode[] = []
+  const nodesNeedingLayout: ConversationNode[] = []
+
+  for (const node of tree.nodes) {
+    if (savedPositions[node.id]) {
+      nodesWithSavedPosition.push({
+        ...node,
+        position: savedPositions[node.id],
+      })
+    } else {
+      nodesNeedingLayout.push(node)
+    }
+  }
+
+  // 如果所有节点都有保存的位置，直接返回
+  if (nodesNeedingLayout.length === 0) {
+    return {
+      ...tree,
+      nodes: nodesWithSavedPosition,
+    }
+  }
+
+  // 如果没有任何保存的位置，使用完整的自动布局
+  if (nodesWithSavedPosition.length === 0) {
+    return applyFullAutoLayout(tree, opts)
+  }
+
+  // 混合模式：为新节点计算位置
+  // 策略：找到新节点的父节点，基于父节点位置计算新节点位置
+  const layoutedNodes = [...nodesWithSavedPosition]
+  const nodePositionMap = new Map(nodesWithSavedPosition.map(n => [n.id, n.position]))
+  
+  // 构建边的映射：target -> source
+  const parentMap = new Map<string, string>()
+  for (const edge of tree.edges) {
+    parentMap.set(edge.target, edge.source)
+  }
+
+  // 构建边的映射：source -> targets
+  const childrenMap = new Map<string, string[]>()
+  for (const edge of tree.edges) {
+    const children = childrenMap.get(edge.source) || []
+    children.push(edge.target)
+    childrenMap.set(edge.source, children)
+  }
+
+  // 按深度排序新节点，确保父节点先处理
+  const sortedNewNodes = [...nodesNeedingLayout].sort((a, b) => {
+    return (a.data.depth || 0) - (b.data.depth || 0)
+  })
+
+  for (const node of sortedNewNodes) {
+    const parentId = parentMap.get(node.id)
+    let position = { x: 0, y: 0 }
+
+    if (parentId && nodePositionMap.has(parentId)) {
+      const parentPos = nodePositionMap.get(parentId)!
+      const siblings = childrenMap.get(parentId) || []
+      const siblingIndex = siblings.indexOf(node.id)
+      const siblingCount = siblings.length
+
+      // 计算水平偏移（基于兄弟节点数量）
+      const totalWidth = (siblingCount - 1) * (opts.nodeWidth + opts.horizontalSpacing)
+      const startX = parentPos.x - totalWidth / 2
+      const xOffset = siblingIndex * (opts.nodeWidth + opts.horizontalSpacing)
+
+      position = {
+        x: startX + xOffset,
+        y: parentPos.y + opts.nodeHeight + opts.verticalSpacing,
+      }
+    } else {
+      // 没有父节点或父节点位置未知，使用 dagre 计算
+      // 这种情况通常不应该发生，但作为后备
+      const tempTree = { ...tree, nodes: [node], edges: [] }
+      const layouted = applyFullAutoLayout(tempTree, opts)
+      position = layouted.nodes[0]?.position || { x: 0, y: 0 }
+    }
+
+    nodePositionMap.set(node.id, position)
+    layoutedNodes.push({
+      ...node,
+      position,
+    })
+  }
+
+  return {
+    ...tree,
+    nodes: layoutedNodes,
+  }
+}
+
+/**
+ * 应用完整的自动布局（使用 dagre）
+ */
+function applyFullAutoLayout(
+  tree: ConversationTree,
+  opts: Required<Omit<TreeLayoutOptions, 'savedPositions'>>
+): ConversationTree {
   // 创建 dagre 图
   const g = new dagre.graphlib.Graph()
   g.setGraph({

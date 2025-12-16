@@ -12,6 +12,15 @@ const isResizeObserverError = (message?: string): boolean => {
   )
 }
 
+// 在最早阶段捕获 ResizeObserver 错误（捕获阶段）
+window.addEventListener('error', (event) => {
+  if (isResizeObserverError(event.message)) {
+    event.stopImmediatePropagation()
+    event.preventDefault()
+    return false
+  }
+}, true) // 使用捕获阶段
+
 // Global error handler for unhandled errors
 window.addEventListener('error', (event) => {
   // 忽略 ResizeObserver 的无害错误
