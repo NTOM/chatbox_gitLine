@@ -90,14 +90,6 @@ export function applyTreeLayout(
     parentMap.set(edge.target, edge.source)
   }
 
-  // 构建边的映射：source -> targets
-  const childrenMap = new Map<string, string[]>()
-  for (const edge of tree.edges) {
-    const children = childrenMap.get(edge.source) || []
-    children.push(edge.target)
-    childrenMap.set(edge.source, children)
-  }
-
   // 按深度排序新节点，确保父节点先处理
   const sortedNewNodes = [...nodesNeedingLayout].sort((a, b) => {
     return (a.data.depth || 0) - (b.data.depth || 0)
@@ -109,17 +101,11 @@ export function applyTreeLayout(
 
     if (parentId && nodePositionMap.has(parentId)) {
       const parentPos = nodePositionMap.get(parentId)!
-      const siblings = childrenMap.get(parentId) || []
-      const siblingIndex = siblings.indexOf(node.id)
-      const siblingCount = siblings.length
-
-      // 计算水平偏移（基于兄弟节点数量）
-      const totalWidth = (siblingCount - 1) * (opts.nodeWidth + opts.horizontalSpacing)
-      const startX = parentPos.x - totalWidth / 2
-      const xOffset = siblingIndex * (opts.nodeWidth + opts.horizontalSpacing)
-
+      
+      // 新节点直接出现在父节点正下方
+      // 不再根据兄弟节点数量计算水平偏移，保持与父节点相同的 X 坐标
       position = {
-        x: startX + xOffset,
+        x: parentPos.x,
         y: parentPos.y + opts.nodeHeight + opts.verticalSpacing,
       }
     } else {

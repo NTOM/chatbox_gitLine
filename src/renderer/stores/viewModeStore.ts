@@ -15,17 +15,25 @@ export type NodePositions = Record<string, { x: number; y: number }>
 /** 按会话ID存储的节点位置 */
 export type SessionNodePositions = Record<string, NodePositions>
 
+/** 视口状态类型 */
+export type ViewportState = { x: number; y: number; zoom: number }
+
+/** 按会话ID存储的视口状态 */
+export type SessionViewports = Record<string, ViewportState>
+
 interface ViewModeState {
   /** 当前视图模式 */
   viewMode: ViewMode
   /** 节点视图中选中的节点ID */
   selectedNodeId: string | null
-  /** 节点视图的缩放级别 */
+  /** 节点视图的缩放级别 (deprecated, 使用 sessionViewports) */
   treeZoom: number
-  /** 节点视图的画布位置 */
+  /** 节点视图的画布位置 (deprecated, 使用 sessionViewports) */
   treePosition: { x: number; y: number }
   /** 按会话ID存储的节点位置 */
   nodePositions: SessionNodePositions
+  /** 按会话ID存储的视口状态 */
+  sessionViewports: SessionViewports
 }
 
 interface ViewModeActions {
@@ -47,6 +55,12 @@ interface ViewModeActions {
   updateNodePositions: (sessionId: string, positions: NodePositions) => void
   /** 清除会话的节点位置 */
   clearNodePositions: (sessionId: string) => void
+  /** 保存会话的视口状态 */
+  saveSessionViewport: (sessionId: string, viewport: ViewportState) => void
+  /** 获取会话的视口状态 */
+  getSessionViewport: (sessionId: string) => ViewportState | undefined
+  /** 清除会话的视口状态 */
+  clearSessionViewport: (sessionId: string) => void
 }
 
 const initialState: ViewModeState = {
@@ -55,6 +69,7 @@ const initialState: ViewModeState = {
   treeZoom: 1,
   treePosition: { x: 0, y: 0 },
   nodePositions: {},
+  sessionViewports: {},
 }
 
 export const viewModeStore = createStore<ViewModeState & ViewModeActions>()(
@@ -112,16 +127,37 @@ export const viewModeStore = createStore<ViewModeState & ViewModeActions>()(
         const { [sessionId]: _, ...rest } = nodePositions
         set({ nodePositions: rest })
       },
+
+      saveSessionViewport: (sessionId, viewport) => {
+        const { sessionViewports } = get()
+        set({
+          sessionViewports: {
+            ...sessionViewports,
+            [sessionId]: viewport,
+          },
+        })
+      },
+
+      getSessionViewport: (sessionId) => {
+        return get().sessionViewports[sessionId]
+      },
+
+      clearSessionViewport: (sessionId) => {
+        const { sessionViewports } = get()
+        const { [sessionId]: _, ...rest } = sessionViewports
+        set({ sessionViewports: rest })
+      },
     }),
     {
       name: 'view-mode-store',
-      version: 2,
+      version: 3,
       partialize: (state) => ({
         viewMode: state.viewMode,
         nodePositions: state.nodePositions,
+        sessionViewports: state.sessionViewports,
       }),
       storage: safeStorage,
-      // 版本迁移：从 v1 升级到 v2
+      // 版本迁移
       migrate: (persistedState: unknown, version: number) => {
         const state = persistedState as Partial<ViewModeState>
         if (version < 2) {
@@ -129,6 +165,14 @@ export const viewModeStore = createStore<ViewModeState & ViewModeActions>()(
           return {
             ...state,
             nodePositions: state.nodePositions || {},
+            sessionViewports: {},
+          }
+        }
+        if (version < 3) {
+          // v2 没有 sessionViewports，添加默认值
+          return {
+            ...state,
+            sessionViewports: {},
           }
         }
         return state as ViewModeState

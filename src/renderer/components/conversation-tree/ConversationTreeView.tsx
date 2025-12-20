@@ -26,6 +26,7 @@ import { sessionToConversationTree, debugPrintTree, type TreeNodeData } from '@/
 import { applyTreeLayout } from '@/lib/tree-layout'
 import { useViewModeStore } from '@/stores/viewModeStore'
 import { useUIStore } from '@/stores/uiStore'
+import { useMantineColorScheme } from '@mantine/core'
 import { nodeTypes } from './nodes'
 import { edgeTypes } from './edges'
 import { cn } from '@/lib/utils'
@@ -37,6 +38,11 @@ import { createMessage } from 'src/shared/types'
 // ============ 常量 ============
 
 const EMPTY_POSITIONS: Record<string, { x: number; y: number }> = {}
+
+/** 节点默认高度 */
+const NODE_HEIGHT = 120
+/** 节点间垂直间距 */
+const VERTICAL_SPACING = 80
 
 // ============ 类型定义 ============
 
@@ -57,7 +63,10 @@ function ConversationTreeViewInner({
   onCreateAssistantNode,
   onUseBottomInput,
 }: ConversationTreeViewProps) {
-  const { fitView } = useReactFlow()
+  const { fitView, getViewport, setViewport } = useReactFlow()
+  const { colorScheme } = useMantineColorScheme()
+  const realTheme = useUIStore((state) => state.realTheme)
+  const isDarkMode = colorScheme === 'dark' || realTheme === 'dark'
   
   // Store selectors
   const setSelectedNodeId = useViewModeStore((s) => s.setSelectedNodeId)
@@ -65,12 +74,15 @@ function ConversationTreeViewInner({
   const updateNodePosition = useViewModeStore((s) => s.updateNodePosition)
   const updateNodePositions = useViewModeStore((s) => s.updateNodePositions)
   const nodePositionsFromStore = useViewModeStore((s) => s.nodePositions[session.id]) ?? EMPTY_POSITIONS
+  const saveSessionViewport = useViewModeStore((s) => s.saveSessionViewport)
+  const sessionViewport = useViewModeStore((s) => s.sessionViewports[session.id])
   const setQuote = useUIStore((state) => state.setQuote)
   
   // Refs
   const prevSessionRef = useRef<string | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const pendingPositionSaveRef = useRef<Record<string, { x: number; y: number }>>({})
+  const isInitialMountRef = useRef<boolean>(true)
   
   // 消息详情抽屉状态
   const [drawerOpened, setDrawerOpened] = useState(false)
@@ -85,15 +97,24 @@ function ConversationTreeViewInner({
   // 将 Session 转换为树结构并应用布局
   const tree = useMemo(() => {
     const rawTree = sessionToConversationTree(session)
-    const layoutedTree = applyTreeLayout(rawTree)
+    // 传递保存的节点位置，让布局算法基于已有位置计算新节点位置
+    const layoutedTree = applyTreeLayout(rawTree, { savedPositions: nodePositionsFromStore })
     if (process.env.NODE_ENV === 'development') {
       debugPrintTree(layoutedTree)
     }
     return layoutedTree
-  }, [session])
+  }, [session, nodePositionsFromStore])
+
+  // 初始化节点时优先使用保存的位置
+  const initialNodes = useMemo(() => {
+    return tree.nodes.map(node => {
+      const savedPosition = nodePositionsFromStore[node.id]
+      return savedPosition ? { ...node, position: savedPosition } : node
+    })
+  }, [tree.nodes, nodePositionsFromStore])
 
   // ReactFlow 状态
-  const [nodes, setNodes, onNodesChange] = useNodesState(tree.nodes as any)
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes as any)
   const [edges, setEdges, onEdgesChange] = useEdgesState(tree.edges as any)
 
   // 根据节点 ID 获取消息
@@ -153,14 +174,31 @@ function ConversationTreeViewInner({
       setEdges(tree.edges as any)
     }, 0)
 
-    // 新会话时自动适配视图
-    if (prevSessionRef.current !== session.id) {
+    // 会话切换或组件首次挂载时处理视口
+    const isSessionChange = prevSessionRef.current !== session.id
+    const isFirstMount = isInitialMountRef.current
+    
+    if (isSessionChange || isFirstMount) {
       prevSessionRef.current = session.id
-      setTimeout(() => fitView({ padding: 0.2, duration: 300 }), 100)
+      
+      // 延迟恢复或适配视口
+      setTimeout(() => {
+        if (sessionViewport) {
+          // 恢复保存的视口状态
+          setViewport(sessionViewport, { duration: 200 })
+        } else if (!isFirstMount) {
+          // 切换到新会话（无保存状态）时自动适配视图
+          fitView({ padding: 0.2, duration: 300 })
+        } else {
+          // 首次挂载且无保存状态时自动适配视图
+          fitView({ padding: 0.2, duration: 300 })
+        }
+        isInitialMountRef.current = false
+      }, 100)
     }
 
     return () => clearTimeout(timeoutId)
-  }, [tree, session.id, setNodes, setEdges, fitView, nodePositionsFromStore])
+  }, [tree, session.id, setNodes, setEdges, fitView, nodePositionsFromStore, sessionViewport, setViewport])
 
   // 延迟保存新节点位置（避免循环更新）
   useEffect(() => {
@@ -201,11 +239,16 @@ function ConversationTreeViewInner({
     setPopoverMessage(null)
   }, [])
 
-  // 画布视口变化时关闭 Popover
+  // 画布视口变化时关闭 Popover 并保存视口状态
   useOnViewportChange({
     onChange: useCallback(() => {
       if (popoverOpened) handleClosePopover()
     }, [popoverOpened, handleClosePopover]),
+    onEnd: useCallback(() => {
+      // 视口变化结束时保存状态
+      const viewport = getViewport()
+      saveSessionViewport(session.id, viewport)
+    }, [session.id, getViewport, saveSessionViewport]),
   })
 
   // 节点点击 - 打开详情抽屉
@@ -246,6 +289,42 @@ function ConversationTreeViewInner({
     setQuote(formattedQuote + '\n\n')
   }, [setQuote])
 
+  // 获取节点当前位置（优先从 ReactFlow 状态获取，其次从 store 获取）
+  const getNodePosition = useCallback((nodeId: string): { x: number; y: number } | null => {
+    // 先从当前 ReactFlow 节点状态获取
+    const currentNode = nodes.find(n => n.id === nodeId)
+    if (currentNode) {
+      return currentNode.position
+    }
+    // 再从 store 获取
+    const savedPosition = nodePositionsFromStore[nodeId]
+    if (savedPosition) {
+      return savedPosition
+    }
+    // 最后从 tree 获取
+    const treeNode = tree.nodes.find(n => n.id === nodeId)
+    return treeNode?.position || null
+  }, [nodes, nodePositionsFromStore, tree.nodes])
+
+  // 计算新节点位置（基于触发节点位置）
+  const calculateNewNodePosition = useCallback((triggerNodeId: string): { x: number; y: number } => {
+    const triggerPosition = getNodePosition(triggerNodeId)
+    if (!triggerPosition) {
+      return { x: 0, y: 0 }
+    }
+    // 新节点位于触发节点正下方
+    return {
+      x: triggerPosition.x,
+      y: triggerPosition.y + NODE_HEIGHT + VERTICAL_SPACING,
+    }
+  }, [getNodePosition])
+
+  // 预保存新节点位置（在创建消息之前调用）
+  const presaveNewNodePosition = useCallback((newNodeId: string, triggerNodeId: string) => {
+    const newPosition = calculateNewNodePosition(triggerNodeId)
+    updateNodePosition(session.id, newNodeId, newPosition)
+  }, [session.id, calculateNewNodePosition, updateNodePosition])
+
   // 创建 User 节点
   const handleCreateUserNode = useCallback(async (content: string, targetMessageId: string) => {
     if (onCreateUserNode) {
@@ -259,6 +338,9 @@ function ConversationTreeViewInner({
     const newMsg = createMessage('user', content)
     const isLeaf = isLeafNode(targetMessageId)
     
+    // 预先保存新节点位置（基于触发节点位置）
+    presaveNewNodePosition(newMsg.id, targetMessageId)
+    
     if (!isLeaf) {
       await createNewFork(session.id, targetMessageId)
       await insertMessageAfter(session.id, newMsg, targetMessageId)
@@ -267,6 +349,8 @@ function ConversationTreeViewInner({
       if (parentId) {
         await createNewFork(session.id, parentId)
         await insertMessageAfter(session.id, newMsg, parentId)
+        // 如果是在父节点下创建，更新位置为父节点下方
+        presaveNewNodePosition(newMsg.id, parentId)
       } else {
         await insertMessageAfter(session.id, newMsg, targetMessageId)
       }
@@ -275,7 +359,7 @@ function ConversationTreeViewInner({
     }
     
     generateMore(session.id, newMsg.id)
-  }, [session.id, onCreateUserNode, getMessageById, findParentMessageId, isLeafNode])
+  }, [session.id, onCreateUserNode, getMessageById, findParentMessageId, isLeafNode, presaveNewNodePosition])
 
   // 创建 Assistant 节点
   const handleCreateAssistantNode = useCallback(async (targetMessageId: string) => {
@@ -302,14 +386,14 @@ function ConversationTreeViewInner({
   // 小地图节点颜色
   const nodeColor = useCallback((node: Node) => {
     const data = node.data as TreeNodeData | undefined
-    if (!data?.isActivePath) return '#9ca3af'
+    if (!data?.isActivePath) return isDarkMode ? '#6b7280' : '#9ca3af'
     switch (data?.type) {
-      case 'system': return '#6b7280'
+      case 'system': return isDarkMode ? '#9ca3af' : '#6b7280'
       case 'user': return '#3b82f6'
       case 'assistant': return '#22c55e'
-      default: return '#6b7280'
+      default: return isDarkMode ? '#9ca3af' : '#6b7280'
     }
-  }, [])
+  }, [isDarkMode])
 
   return (
     <div ref={containerRef} className={cn('w-full h-full', className)}>
@@ -324,7 +408,7 @@ function ConversationTreeViewInner({
         onPaneClick={handlePaneClick}
         nodeTypes={nodeTypes as any}
         edgeTypes={edgeTypes as any}
-        fitView
+        defaultViewport={sessionViewport || { x: 0, y: 0, zoom: 1 }}
         fitViewOptions={{ padding: 0.2 }}
         minZoom={0.1}
         maxZoom={2}
@@ -333,9 +417,35 @@ function ConversationTreeViewInner({
         elementsSelectable
         proOptions={{ hideAttribution: true }}
       >
-        <Controls showZoom showFitView showInteractive={false} position="bottom-right" />
-        <MiniMap nodeColor={nodeColor} nodeStrokeWidth={3} zoomable pannable position="bottom-left" />
-        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#e5e7eb" />
+        <Controls 
+          showZoom 
+          showFitView 
+          showInteractive={false} 
+          position="bottom-right"
+          className={cn(
+            '[&>button]:!bg-white [&>button]:!border-gray-200 [&>button]:!text-gray-600',
+            'dark:[&>button]:!bg-gray-800 dark:[&>button]:!border-gray-600 dark:[&>button]:!text-gray-300',
+            '[&>button:hover]:!bg-gray-100 dark:[&>button:hover]:!bg-gray-700'
+          )}
+        />
+        <MiniMap 
+          nodeColor={nodeColor} 
+          nodeStrokeWidth={3} 
+          zoomable 
+          pannable 
+          position="bottom-left"
+          className={cn(
+            '!bg-gray-100 !border-gray-200',
+            'dark:!bg-gray-800 dark:!border-gray-600'
+          )}
+          maskColor={isDarkMode ? 'rgba(0, 0, 0, 0.6)' : 'rgba(240, 240, 240, 0.6)'}
+        />
+        <Background 
+          variant={BackgroundVariant.Dots} 
+          gap={20} 
+          size={1} 
+          color={isDarkMode ? '#4b5563' : '#e5e7eb'} 
+        />
       </ReactFlow>
 
       <MessageDetailDrawer

@@ -104,8 +104,8 @@ function UserNodeComponent({ data, selected }: UserNodeProps) {
       className={cn(
         'w-[260px] rounded-lg border-2 p-3 transition-all relative group',
         'bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-700',
-        data.isActivePath && 'ring-2 ring-blue-400 ring-offset-2',
-        !data.isActivePath && 'opacity-60',
+        data.isActivePath && 'ring-2 ring-blue-400 ring-offset-2 dark:ring-offset-gray-900',
+        !data.isActivePath && 'opacity-70 dark:opacity-80',
         selected && 'border-blue-500 shadow-lg',
         isHovered && 'shadow-md'
       )}
@@ -137,17 +137,29 @@ function UserNodeComponent({ data, selected }: UserNodeProps) {
           <div className="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center">
             <IconUser size={14} className="text-white" />
           </div>
-          <span className="text-xs font-medium text-blue-600 dark:text-blue-400">
+          <span className={cn(
+            'text-xs font-medium text-blue-600 dark:text-blue-400',
+            // 未激活节点在夜间模式下使用深色文字
+            !data.isActivePath && 'dark:text-blue-700'
+          )}>
             You
           </span>
         </div>
         {timestamp && (
-          <span className="text-xs text-gray-400">{timestamp}</span>
+          <span className={cn(
+            'text-xs text-gray-400 dark:text-gray-500',
+            !data.isActivePath && 'dark:text-gray-600'
+          )}>{timestamp}</span>
         )}
       </div>
 
       {/* 内容预览 */}
-      <div className="text-sm text-gray-700 dark:text-gray-200 line-clamp-3">
+      <div className={cn(
+        'text-sm line-clamp-3',
+        'text-gray-700 dark:text-gray-200',
+        // 未激活节点在夜间模式下使用深色文字，因为背景色较亮
+        !data.isActivePath && 'dark:text-gray-800'
+      )}>
         {previewText || '(Empty message)'}
       </div>
 

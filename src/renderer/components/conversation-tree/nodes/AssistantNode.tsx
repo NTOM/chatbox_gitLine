@@ -105,8 +105,8 @@ function AssistantNodeComponent({ data, selected }: AssistantNodeProps) {
       className={cn(
         'w-[260px] rounded-lg border-2 p-3 transition-all relative group',
         'bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-700',
-        data.isActivePath && 'ring-2 ring-green-400 ring-offset-2',
-        !data.isActivePath && 'opacity-60',
+        data.isActivePath && 'ring-2 ring-green-400 ring-offset-2 dark:ring-offset-gray-900',
+        !data.isActivePath && 'opacity-70 dark:opacity-80',
         hasError && 'border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/30',
         selected && 'border-green-500 shadow-lg',
         isHovered && 'shadow-md'
@@ -154,14 +154,19 @@ function AssistantNodeComponent({ data, selected }: AssistantNodeProps) {
               'text-xs font-medium',
               hasError
                 ? 'text-red-600 dark:text-red-400'
-                : 'text-green-600 dark:text-green-400'
+                : 'text-green-600 dark:text-green-400',
+              // 未激活节点在夜间模式下使用深色文字
+              !data.isActivePath && !hasError && 'dark:text-green-700'
             )}
           >
             {data.message.model || 'Assistant'}
           </span>
         </div>
         {timestamp && (
-          <span className="text-xs text-gray-400">{timestamp}</span>
+          <span className={cn(
+            'text-xs text-gray-400 dark:text-gray-500',
+            !data.isActivePath && 'dark:text-gray-600'
+          )}>{timestamp}</span>
         )}
       </div>
 
@@ -171,7 +176,9 @@ function AssistantNodeComponent({ data, selected }: AssistantNodeProps) {
           'text-sm line-clamp-3',
           hasError
             ? 'text-red-600 dark:text-red-300'
-            : 'text-gray-700 dark:text-gray-200'
+            : 'text-gray-700 dark:text-gray-200',
+          // 未激活节点在夜间模式下使用深色文字，因为背景色较亮
+          !data.isActivePath && !hasError && 'dark:text-gray-800'
         )}
       >
         {hasError ? (
@@ -189,7 +196,10 @@ function AssistantNodeComponent({ data, selected }: AssistantNodeProps) {
 
       {/* Token 使用信息 */}
       {data.message.usage?.totalTokens && (
-        <div className="mt-2 text-xs text-gray-400">
+        <div className={cn(
+          'mt-2 text-xs text-gray-400 dark:text-gray-500',
+          !data.isActivePath && 'dark:text-gray-600'
+        )}>
           🎯 {data.message.usage.totalTokens} tokens
         </div>
       )}
@@ -207,7 +217,10 @@ function AssistantNodeComponent({ data, selected }: AssistantNodeProps) {
 
       {/* 子分支指示器 */}
       {data.childrenCount > 1 && (
-        <div className="mt-1 text-xs text-purple-500 flex items-center gap-1">
+        <div className={cn(
+          'mt-1 text-xs text-purple-500 dark:text-purple-400 flex items-center gap-1',
+          !data.isActivePath && 'dark:text-purple-700'
+        )}>
           <IconGitFork size={12} />
           {data.childrenCount} branches below
         </div>
