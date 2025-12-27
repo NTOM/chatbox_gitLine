@@ -14,8 +14,11 @@ type SystemNodeProps = {
   selected?: boolean
 }
 
-function SystemNodeComponent({ data, selected }: SystemNodeProps) {
+function SystemNodeComponent({ data, selected: _rfSelected }: SystemNodeProps) {
   const previewText = getMessagePreviewText(data.message, 80)
+  
+  // 使用我们自己管理的选中状态，而不是 ReactFlow 的 selected
+  const isSelected = data.isSelected ?? false
 
   return (
     <div
@@ -23,8 +26,12 @@ function SystemNodeComponent({ data, selected }: SystemNodeProps) {
         'w-[260px] rounded-lg border-2 border-dashed p-3 transition-all',
         'bg-gray-50 dark:bg-gray-800 border-gray-300 dark:border-gray-600',
         data.isActivePath && 'ring-2 ring-blue-400 ring-offset-2',
-        selected && 'border-blue-500 shadow-lg'
+        isSelected && 'border-gray-500'
       )}
+      style={isSelected ? {
+        boxShadow: '0 0 20px 4px rgba(107, 114, 128, 0.5), 0 0 40px 8px rgba(107, 114, 128, 0.25)',
+        animation: 'node-glow-pulse 2s ease-in-out infinite',
+      } : undefined}
     >
       {/* 顶部连接点 */}
       <Handle

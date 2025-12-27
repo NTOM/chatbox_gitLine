@@ -26,8 +26,8 @@ export interface TreeLayoutOptions {
 const DEFAULT_OPTIONS: Required<Omit<TreeLayoutOptions, 'savedPositions'>> = {
   nodeWidth: 280,
   nodeHeight: 120,
-  horizontalSpacing: 50,
-  verticalSpacing: 80,
+  horizontalSpacing: 80,   // 增加水平间距，避免分支节点过近
+  verticalSpacing: 140,    // 增加垂直间距，解决连接线回流问题
   direction: 'TB',
 }
 
@@ -84,10 +84,16 @@ export function applyTreeLayout(
   const layoutedNodes = [...nodesWithSavedPosition]
   const nodePositionMap = new Map(nodesWithSavedPosition.map(n => [n.id, n.position]))
   
-  // 构建边的映射：target -> source
+  // 构建边的映射：target -> source (子节点 -> 父节点)
   const parentMap = new Map<string, string>()
+  // 构建边的映射：source -> targets (父节点 -> 子节点列表)
+  const childrenMap = new Map<string, string[]>()
+  
   for (const edge of tree.edges) {
     parentMap.set(edge.target, edge.source)
+    const children = childrenMap.get(edge.source) || []
+    children.push(edge.target)
+    childrenMap.set(edge.source, children)
   }
 
   // 按深度排序新节点，确保父节点先处理
@@ -101,16 +107,35 @@ export function applyTreeLayout(
 
     if (parentId && nodePositionMap.has(parentId)) {
       const parentPos = nodePositionMap.get(parentId)!
+      const siblings = childrenMap.get(parentId) || []
+      const siblingIndex = siblings.indexOf(node.id)
+      const totalSiblings = siblings.length
       
-      // 新节点直接出现在父节点正下方
-      // 不再根据兄弟节点数量计算水平偏移，保持与父节点相同的 X 坐标
+      // 计算水平偏移：如果有多个兄弟节点，需要分散排列
+      let xOffset = 0
+      if (totalSiblings > 1) {
+        // 计算已存在兄弟节点的位置，找到合适的空位
+        const existingSiblingPositions = siblings
+          .filter(id => id !== node.id && nodePositionMap.has(id))
+          .map(id => nodePositionMap.get(id)!.x)
+        
+        if (existingSiblingPositions.length > 0) {
+          // 在现有兄弟节点的右侧放置
+          const maxX = Math.max(...existingSiblingPositions)
+          xOffset = maxX - parentPos.x + opts.nodeWidth + opts.horizontalSpacing
+        } else {
+          // 第一个子节点，根据索引计算偏移
+          const centerOffset = (totalSiblings - 1) / 2
+          xOffset = (siblingIndex - centerOffset) * (opts.nodeWidth + opts.horizontalSpacing)
+        }
+      }
+      
       position = {
-        x: parentPos.x,
+        x: parentPos.x + xOffset,
         y: parentPos.y + opts.nodeHeight + opts.verticalSpacing,
       }
     } else {
       // 没有父节点或父节点位置未知，使用 dagre 计算
-      // 这种情况通常不应该发生，但作为后备
       const tempTree = { ...tree, nodes: [node], edges: [] }
       const layouted = applyFullAutoLayout(tempTree, opts)
       position = layouted.nodes[0]?.position || { x: 0, y: 0 }
@@ -131,6 +156,7 @@ export function applyTreeLayout(
 
 /**
  * 应用完整的自动布局（使用 dagre）
+ * 针对分支情况进行优化，确保足够的垂直间距
  */
 function applyFullAutoLayout(
   tree: ConversationTree,
@@ -142,8 +168,10 @@ function applyFullAutoLayout(
     rankdir: opts.direction,
     nodesep: opts.horizontalSpacing,
     ranksep: opts.verticalSpacing,
-    marginx: 20,
-    marginy: 20,
+    marginx: 40,
+    marginy: 40,
+    // 使用 network-simplex 算法，对树形结构效果更好
+    ranker: 'network-simplex',
   })
   g.setDefaultEdgeLabel(() => ({}))
 
@@ -287,4 +315,19 @@ export function calculateScrollToNode(
     x: viewportWidth / 2 - nodeCenterX * zoom,
     y: viewportHeight / 2 - nodeCenterY * zoom,
   }
+}
+
+/**
+ * 强制重新计算所有节点的布局位置
+ * 忽略已保存的位置，使用 dagre 重新排列
+ */
+export function forceRelayout(
+  tree: ConversationTree,
+  options: TreeLayoutOptions = {}
+): ConversationTree {
+  if (tree.nodes.length === 0) {
+    return tree
+  }
+  const opts = { ...DEFAULT_OPTIONS, ...options }
+  return applyFullAutoLayout(tree, opts)
 }

@@ -60,6 +60,9 @@ import ProviderImageIcon from '../icons/ProviderImageIcon'
 import KnowledgeBaseMenu from '../knowledge-base/KnowledgeBaseMenu'
 import ModelSelector from '../ModelSelector'
 import MCPMenu from '../mcp/MCPMenu'
+import MultiModelToggle from '../MultiModelToggle'
+import { MultiModelSelector, SelectedModelsDisplay } from '../MultiModelSelector'
+import { useMultiModelStore } from '@/stores/multiModelStore'
 import { ScalableIcon } from '../ScalableIcon'
 import { Keys } from '../Shortcut'
 import { ImageUploadButton } from './ImageUploadButton'
@@ -81,6 +84,8 @@ import { WebBrowsingButton } from './WebBrowsingButton'
 export type InputBoxPayload = {
   constructedMessage: Message
   needGenerating?: boolean
+  /** 多模型模式下的模型列表 */
+  multiModels?: Array<{ provider: string; modelId: string }>
 }
 
 export type InputBoxRef = {
@@ -127,6 +132,10 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
     const pasteLongTextAsAFile = useSettingsStore((state) => state.pasteLongTextAsAFile)
     const shortcuts = useSettingsStore((state) => state.shortcuts)
     const widthFull = useUIStore((s) => s.widthFull) || fullWidth
+
+    // 多模型模式状态
+    const multiModelEnabled = useMultiModelStore((s) => s.multiModelEnabled)
+    const selectedModels = useMultiModelStore((s) => s.selectedModels)
 
     // Use atom as the source of truth for pictureKeys and attachments
     const webBrowsingMode = useUIStore((s) => s.inputBoxWebBrowsingMode)
@@ -286,8 +295,19 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
         return
       }
 
-      // 未选择模型时 显示error tip
-      if (!model) {
+      // 多模型模式检查
+      if (multiModelEnabled && selectedModels.length === 0) {
+        await delay(100)
+        if (closeSelectModelErrorTipCb.current) {
+          clearTimeout(closeSelectModelErrorTipCb.current)
+        }
+        setShowSelectModelErrorTip(true)
+        closeSelectModelErrorTipCb.current = setTimeout(() => setShowSelectModelErrorTip(false), 5000)
+        return
+      }
+
+      // 单模型模式检查
+      if (!multiModelEnabled && !model) {
         // 如果不延时执行，会导致error tip 立即消失
         await delay(100)
         if (closeSelectModelErrorTipCb.current) {
@@ -306,9 +326,11 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
           return
         }
 
-        const params = {
+        const params: InputBoxPayload = {
           constructedMessage: preConstructedMessage.message,
           needGenerating,
+          // 多模型模式下传递选中的模型列表
+          multiModels: multiModelEnabled && selectedModels.length > 0 ? selectedModels : undefined,
         }
 
         // 重置输入内容
@@ -833,6 +855,9 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
                       </ActionIcon>
                     </Tooltip>
                   )}
+
+                  {/* 多模型模式切换按钮 */}
+                  <MultiModelToggle />
                 </>
               )}
               {model?.provider === ModelProviderEnum.ChatboxAI && sessionType === 'picture' && (
@@ -971,6 +996,36 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
                         <ScalableIcon icon={IconSelector} size={16} className="opacity-50" />
                       </span>
                     </ImageModelSelect>
+                  ) : multiModelEnabled ? (
+                    // 多模型模式下的选择器
+                    <MultiModelSelector
+                      currentModel={model}
+                      onSelect={onSelectModel}
+                    >
+                      <Flex gap="xxs" px={isSmallScreen ? 0 : 'xs'} align="center" className={cn('cursor-pointer')}>
+                        {selectedModels.length > 0 ? (
+                          <>
+                            <Flex align="center" gap={2}>
+                              {selectedModels.slice(0, 3).map((m, i) => (
+                                <ProviderImageIcon key={`${m.provider}-${m.modelId}`} size={isSmallScreen ? 16 : 18} provider={m.provider} style={{ marginLeft: i > 0 ? -6 : 0 }} />
+                              ))}
+                            </Flex>
+                            <Text size={isSmallScreen ? 'xs' : 'sm'} className="line-clamp-1">
+                              {t('{{count}} models', { count: selectedModels.length })}
+                            </Text>
+                          </>
+                        ) : (
+                          <Text size={isSmallScreen ? 'xs' : 'sm'} c="dimmed">
+                            {t('Select models')}
+                          </Text>
+                        )}
+                        <ScalableIcon
+                          icon={IconSelector}
+                          size={20}
+                          className="flex-[0_0_auto] text-chatbox-tint-tertiary"
+                        />
+                      </Flex>
+                    </MultiModelSelector>
                   ) : (
                     <ModelSelector
                       onSelect={onSelectModel}

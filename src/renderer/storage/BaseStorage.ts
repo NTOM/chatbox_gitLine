@@ -33,6 +33,10 @@ export default class BaseStorage {
     return platform.getAllStoreValues()
   }
 
+  public async getAllKeys(): Promise<string[]> {
+    return platform.getAllStoreKeys()
+  }
+
   public async setAll(data: { [key: string]: any }) {
     return platform.setAllStoreValues(data)
   }

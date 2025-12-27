@@ -586,24 +586,64 @@ export type ChatboxAIModel = 'chatboxai-3.5' | 'chatboxai-4' | string
 //   collapsable?: boolean
 // }
 
-export function copyMessage(source: Message): Message {
+export function copyMessage(source: Message, idMap?: Map<string, string>): Message {
+  const newId = uuidv4()
+  if (idMap) {
+    idMap.set(source.id, newId)
+  }
   return {
     ...source,
     cancel: undefined,
-    id: uuidv4(),
+    id: newId,
   }
 }
 
-export function copyThreads(source?: SessionThread[]): SessionThread[] | undefined {
+export function copyThreads(
+  source?: SessionThread[],
+  idMap?: Map<string, string>
+): SessionThread[] | undefined {
   if (!source) {
     return undefined
   }
   return source.map((thread) => ({
     ...thread,
-    messages: thread.messages.map(copyMessage),
+    messages: thread.messages.map((m) => copyMessage(m, idMap)),
     createdAt: Date.now(),
     id: uuidv4(),
   }))
+}
+
+export function copyMessageForksHash(
+  source: Session['messageForksHash'],
+  idMap: Map<string, string>
+): Session['messageForksHash'] {
+  if (!source) {
+    return undefined
+  }
+
+  // 1. Copy all messages inside forks and populate idMap
+  const tempForks: Record<string, any> = {}
+  for (const [key, fork] of Object.entries(source)) {
+    tempForks[key] = {
+      ...fork,
+      lists: fork.lists.map((list) => ({
+        ...list,
+        id: uuidv4(),
+        messages: list.messages.map((m) => copyMessage(m, idMap)),
+      })),
+      createdAt: Date.now(),
+    }
+  }
+
+  // 2. Remap keys using idMap
+  const result: Session['messageForksHash'] = {}
+  for (const [oldKey, newFork] of Object.entries(tempForks)) {
+    const newKey = idMap.get(oldKey)
+    if (newKey) {
+      result[newKey] = newFork
+    }
+  }
+  return result
 }
 
 // RAG 相关

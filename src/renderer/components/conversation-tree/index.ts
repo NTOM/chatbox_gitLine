@@ -9,6 +9,7 @@ export { edgeTypes } from './edges'
 
 // 阶段三新增组件
 export { MessageDetailDrawer } from './MessageDetailDrawer'
+export { MessageDetailPanel } from './MessageDetailPanel'
 export { TextSelectionQuote } from './TextSelectionQuote'
 export { NodeActionBar } from './NodeActionBar'
 export { NodeCreatePopover } from './NodeCreatePopover'

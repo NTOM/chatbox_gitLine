@@ -50,6 +50,7 @@ import { ErrorBoundary } from './ErrorBoundary'
 import { BlockCodeCollapsedStateProvider } from './Markdown'
 import Message from './Message'
 import MessageNavigation, { ScrollToBottomButton } from './MessageNavigation'
+import { MultiBranchBanner } from './MultiBranchIndicator'
 import { ScalableIcon } from './ScalableIcon'
 
 const sessionScrollPositionCache = new Map<string, StateSnapshot>()
@@ -75,6 +76,12 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>((props, ref) =>
     [currentSession]
   )
   const currentMessageList = useMemo(() => getAllMessageList(currentSession), [currentSession])
+
+  // 检查是否存在多分支
+  const hasBranches = useMemo(() => {
+    if (!currentSession.messageForksHash) return false
+    return Object.values(currentSession.messageForksHash).some(fork => fork.lists.length > 1)
+  }, [currentSession.messageForksHash])
 
   const virtuoso = useRef<VirtuosoHandle>(null)
   const messageListRef = useRef<HTMLDivElement>(null)
@@ -231,9 +238,12 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>((props, ref) =>
   }))
 
   return (
-    <div className={cn('w-full h-full mx-auto', props.className)}>
+    <div className={cn('w-full h-full mx-auto flex flex-col', props.className)}>
+      {/* 多分支提示横幅 */}
+      <MultiBranchBanner hasBranches={hasBranches} />
+      
       <BlockCodeCollapsedStateProvider defaultCollapsed={!!settingsStore.getState().autoCollapseCodeBlock}>
-        <div className="overflow-hidden h-full pr-0 pl-1 sm:pl-0 relative" ref={messageListRef}>
+        <div className="overflow-hidden flex-1 pr-0 pl-1 sm:pl-0 relative" ref={messageListRef}>
           <Virtuoso
             style={{ scrollbarGutter: 'stable' }}
             className={platformType === 'win32' ? 'scrollbar-custom' : ''}

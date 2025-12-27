@@ -3,13 +3,89 @@
   <a href="./doc/README-CN.md">简体中文</a>
 </p>
 
+# Chatbox (Git-Style Tree Version)
+
 This is the repository for the Chatbox Community Edition, open-sourced under the GPLv3 license.
 
 [Chatbox is going open-source Again!](https://github.com/chatboxai/chatbox/issues/2266)
 
 We regularly sync code from the pro repo to this repo, and vice versa.
 
-### Download for Desktop
+> **⚠️ Disclaimer & Acknowledgements / 致敬与说明**
+>
+> This is a **community fork** based on the excellent work of [Chatbox](https://github.com/chatboxai/chatbox).
+> This version introduces a **Git-Style Tree View** to help users visualize conversation branches, compare model outputs, and manage complex dialogue contexts.
+>
+> **Please support the original project!** This fork is intended as an auxiliary tool for specific needs. For the standard experience, please use the official [Chatbox](https://chatboxai.app).
+>
+> 本项目是 [Chatbox](https://github.com/chatboxai/chatbox) 的社区 Fork 版本。
+> 我们在此版本中引入了 **Git 风格的树状视图**，旨在帮助用户可视化对话分支、对比不同模型的输出以及管理复杂的对话上下文。
+> **请支持原项目！** 此分支仅作为特定需求下的辅助工具。如需标准体验，请访问官方 [Chatbox](https://chatboxai.app)。
+
+---
+
+## Tree Version Features (此版本特色)
+
+### 1. Visualization Tree View (可视化节点视图)
+Visualize your conversation flow like a Git graph. Every question and answer is a node.
+像 Git 图谱一样可视化您的对话流。每个问答都是一个节点，清晰展示对话的上下文和分支结构。
+
+![Tree View Overview](doc_tree/分支介绍.gif)
+
+> **Display Modes (显示模式)**
+>
+> Switch between different display modes to suit your needs.
+> 切换不同的显示模式以适应您的需求。
+>
+> ![Display Mode](doc_tree/显示模式切换.png)
+
+### 2. Branch Management (分支管理)
+Easily create new branches from any node to try different prompts or compare responses.
+轻松从任意节点创建新分支，尝试不同的提示词，或对比不同回答。
+
+![Branching Demo](doc_tree/多分支对话.png)
+
+> **Seamless Switching (无缝切换)**
+>
+> Switch between branches effortlessly to explore different conversation paths.
+> 轻松在不同分支间切换，探索不同的对话路径。
+>
+> ![Branch Switching](doc_tree/分支切换.gif)
+
+### 3. Flexible Context (灵活上下文)
+**Custom Reference (自由引用)**
+Select specific nodes to include in the context, giving you full control over what the AI sees.
+选择特定节点作为上下文，完全控制 AI 的输入内容。
+
+![Flexible Quoting](doc_tree/更自由的引用.gif)
+
+### 4. Efficient Interaction (高效交互)
+**Toolbar & Quick Actions (工具栏与快捷操作)**
+Hover over nodes for quick actions (Edit, Copy, Quote, Delete), or use the toolbar for advanced controls.
+悬浮节点进行编辑、复制、引用、删除等快捷操作，或使用工具栏进行高级控制。
+
+![Toolbar](doc_tree/工具栏介绍.png)
+
+**Quick Node Creation (快速创建节点)**
+Quickly extend the conversation from any point.
+从任意位置快速扩展对话。
+
+![Quick Create](doc_tree/快速创建节点.png)
+
+- **Detail Panel**: Click any node to view full Markdown content in a resizeable side panel.
+- **详情面板**: 点击节点在侧边栏查看完整的 Markdown 内容，支持宽度调整。
+
+---
+
+## Download
+
+### Tree Version (下载 Tree 版)
+> *Coming Soon...*
+>
+> *(I will add the download link for the PC exe version here later.)*
+> *(我会稍后在此处添加 PC exe 版本的下载链接)*
+
+### Chatbox Community Edition (Original / 原版下载)
 
 <table style="width: 100%">
   <tr>
@@ -55,8 +131,6 @@ We regularly sync code from the pro repo to this repo, and vice versa.
   </tr>
 </table>
 
-### Download for iOS/Android
-
 <a href='https://apps.apple.com/app/chatbox-ai/id6471368056' style='margin-right: 4px'>
 <img src='./doc/statics/app_store.webp' style="height:38px;" />
 </a>
@@ -71,151 +145,6 @@ We regularly sync code from the pro repo to this repo, and vice versa.
 For more information: [chatboxai.app](https://chatboxai.app/)
 
 ---
-<div align="center" markdown="1">
-  <a href="https://go.warp.dev/chatbox">
-    <img alt="Warp sponsorship" width="400" src="https://raw.githubusercontent.com/warpdotdev/brand-assets/refs/heads/main/Github/Sponsor/Warp-Github-LG-02.png">
-  </a>
-
-### [Warp, built for coding with multiple AI agents.](https://go.warp.dev/chatbox)
-[Available for MacOS, Linux, & Windows](https://go.warp.dev/chatbox)<br>
-</div>
-
-<hr>
-
-<h1 align="center">
-<img src='./doc/statics/icon.png' width='30'>
-<span>
-    Chatbox
-    <span style="font-size:8px; font-weight: normal;">(Community Edition)</span>
-</span>
-</h1>
-<p align="center">
-    <em>Your Ultimate AI Copilot on the Desktop. <br />Chatbox is a desktop client for ChatGPT, Claude and other LLMs, available on Windows, Mac, Linux</em>
-</p>
-
-<p align="center">
-<a href="https://github.com/chatboxai/chatbox/releases" target="_blank">
-<img alt="macOS" src="https://img.shields.io/badge/-macOS-black?style=flat-square&logo=apple&logoColor=white" />
-</a>
-<a href="https://github.com/chatboxai/chatbox/releases" target="_blank">
-<img alt="Windows" src="https://img.shields.io/badge/-Windows-blue?style=flat-square&logo=windows&logoColor=white" />
-</a>
-<a href="https://github.com/chatboxai/chatbox/releases" target="_blank">
-<img alt="Linux" src="https://img.shields.io/badge/-Linux-yellow?style=flat-square&logo=linux&logoColor=white" />
-</a>
-<a href="https://github.com/chatboxai/chatbox/releases" target="_blank">
-<img alt="Downloads" src="https://img.shields.io/github/downloads/chatboxai/chatbox/total.svg?style=flat" />
-</a>
-</p>
-
-<a href="https://www.producthunt.com/posts/chatbox?utm_source=badge-featured&utm_medium=badge&utm_souce=badge-chatbox" target="_blank"><img src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=429547&theme=light" alt="Chatbox - Better&#0032;UI&#0032;&#0038;&#0032;Desktop&#0032;App&#0032;for&#0032;ChatGPT&#0044;&#0032;Claude&#0032;and&#0032;other&#0032;LLMs&#0046; | Product Hunt" style="width: 150px; height: 30px;" width="100" height="40" /></a>
-
-<a href="./doc/statics/snapshot_light.png">
-<img src="./doc/statics/snapshot_light.png" width="400"/>
-</a>
-<a href="./doc/statics/snapshot_dark.png">
-<img src="./doc/statics/snapshot_dark.png" width="400"/>
-</a>
-
-<!-- <table>
-<tr>
-<td>
-<img src="./dec/../doc/demo_mobile_1.png" alt="App Screenshot" style="box-shadow: 2px 2px 10px rgba(0,0,0,0.1); border: 1px solid #ddd; border-radius: 8px; height: 300px" />
-</td>
-<td>
-<img src="./dec/../doc/demo_mobile_2.png" alt="App Screenshot" style="box-shadow: 2px 2px 10px rgba(0,0,0,0.1); border: 1px solid #ddd; border-radius: 8px; height: 300px" />
-</td>
-</tr>
-</table> -->
-
-## Features
-
--   **Local Data Storage**  
-    :floppy_disk: Your data remains on your device, ensuring it never gets lost and maintains your privacy.
-
--   **No-Deployment Installation Packages**  
-    :package: Get started quickly with downloadable installation packages. No complex setup necessary!
-
--   **Support for Multiple LLM Providers**  
-    :gear: Seamlessly integrate with a variety of cutting-edge language models:
-
-    -   OpenAI (ChatGPT)
-    -   Azure OpenAI
-    -   Claude
-    -   Google Gemini Pro
-    -   Ollama (enable access to local models like llama2, Mistral, Mixtral, codellama, vicuna, yi, and solar)
-    -   ChatGLM-6B
-
--   **Image Generation with Dall-E-3**  
-    :art: Create the images of your imagination with Dall-E-3.
-
--   **Enhanced Prompting**  
-    :speech_balloon: Advanced prompting features to refine and focus your queries for better responses.
-
--   **Keyboard Shortcuts**  
-    :keyboard: Stay productive with shortcuts that speed up your workflow.
-
--   **Markdown, Latex & Code Highlighting**  
-    :scroll: Generate messages with the full power of Markdown and Latex formatting, coupled with syntax highlighting for various programming languages, enhancing readability and presentation.
-
--   **Prompt Library & Message Quoting**  
-    :books: Save and organize prompts for reuse, and quote messages for context in discussions.
-
--   **Streaming Reply**  
-    :arrow_forward: Provide rapid responses to your interactions with immediate, progressive replies.
-
--   **Ergonomic UI & Dark Theme**  
-    :new_moon: A user-friendly interface with a night mode option for reduced eye strain during extended use.
-
--   **Team Collaboration**  
-    :busts_in_silhouette: Collaborate with ease and share OpenAI API resources among your team. [Learn More](./team-sharing/README.md)
-
--   **Cross-Platform Availability**  
-    :computer: Chatbox is ready for Windows, Mac, Linux users.
-
--   **Access Anywhere with the Web Version**  
-    :globe_with_meridians: Use the web application on any device with a browser, anywhere.
-
--   **iOS & Android**  
-    :phone: Use the mobile applications that will bring this power to your fingertips on the go.
-
--   **Multilingual Support**  
-    :earth_americas: Catering to a global audience by offering support in multiple languages:
-
-    -   English
-    -   简体中文 (Simplified Chinese)
-    -   繁體中文 (Traditional Chinese)
-    -   日本語 (Japanese)
-    -   한국어 (Korean)
-    -   Français (French)
-    -   Deutsch (German)
-    -   Русский (Russian)
-    -   Español (Spanish)
-
--   **And More...**  
-    :sparkles: Constantly enhancing the experience with new features!
-
-## FAQ
-
--   [Frequently Asked Questions](./doc/FAQ.md)
-
-## Why I made Chatbox?
-
-I developed Chatbox initially because I was debugging some prompts and found myself in need of a simple and easy-to-use prompt and API debugging tool. I thought there might be more people who needed such a tool, so I open-sourced it.
-
-At first, I didn't know that it would be so popular. I listened to the feedback from the open-source community and continued to develop and improve it. Now, it has become a very useful AI desktop application. There are many users who love Chatbox, and they not only use it for developing and debugging prompts, but also for daily chatting, and even to do some more interesting things like using well-designed prompts to make AI play various professional roles to assist them in everyday work...
-
-## How to Contribute
-
-Any form of contribution is welcome, including but not limited to:
-
--   Submitting issues
--   Submitting pull requests
--   Submitting feature requests
--   Submitting bug reports
--   Submitting documentation revisions
--   Submitting translations
--   Submitting any other forms of contribution
 
 ## Prerequisites
 
@@ -253,14 +182,6 @@ npm run package
 ```bash
 npm run package:all
 ```
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=chatboxai/chatbox&type=Date)](https://star-history.com/#chatboxai/chatbox&Date)
-
-## Contact
-
-[Twitter](https://x.com/ChatboxAI_HQ) | [Email](mailto:hi@chatboxai.com)
 
 ## License
 

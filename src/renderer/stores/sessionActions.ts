@@ -26,6 +26,7 @@ import {
 } from '../../shared/models/errors'
 import {
   copyMessage,
+  copyMessageForksHash,
   copyThreads,
   createMessage,
   type ExportChatFormat,
@@ -40,6 +41,7 @@ import {
   type SessionThread,
   type SessionType,
   type Settings,
+  type ModelProvider,
 } from '../../shared/types'
 import { cloneMessage, countMessageWords, getMessageText, mergeMessages } from '../../shared/utils/message'
 import * as promptFormat from '../packages/prompts'
@@ -296,12 +298,20 @@ async function copySession(
   if (!source) {
     throw new Error(`Session ${sourceMeta.id} not found`)
   }
+  const idMap = new Map<string, string>()
+  const newMessages = sourceMeta.messages
+    ? sourceMeta.messages.map((m) => copyMessage(m, idMap))
+    : source.messages.map((m) => copyMessage(m, idMap))
+  const newThreads = sourceMeta.threads
+    ? copyThreads(sourceMeta.threads, idMap)
+    : copyThreads(source.threads, idMap)
+
   const newSession = {
     ...omit(source, 'id', 'messages', 'threads', 'messageForksHash'),
     ...(sourceMeta.name ? { name: sourceMeta.name } : {}),
-    messages: sourceMeta.messages ? sourceMeta.messages.map(copyMessage) : source.messages.map(copyMessage),
-    threads: sourceMeta.threads ? copyThreads(sourceMeta.threads) : source.threads,
-    messageForksHash: undefined, // 不复制分叉数据
+    messages: newMessages,
+    threads: newThreads,
+    messageForksHash: copyMessageForksHash(source.messageForksHash, idMap),
     ...(sourceMeta.threadName ? { threadName: sourceMeta.threadName } : {}),
   }
   return await chatStore.createSession(newSession, source.id)
@@ -587,14 +597,19 @@ export async function removeMessage(sessionId: string, messageId: string) {
  */
 export async function submitNewUserMessage(
   sessionId: string,
-  params: { newUserMsg: Message; needGenerating: boolean }
+  params: { 
+    newUserMsg: Message
+    needGenerating: boolean
+    /** 多模型模式下的模型列表 */
+    multiModels?: Array<{ provider: string; modelId: string }>
+  }
 ) {
   const session = await chatStore.getSession(sessionId)
   const settings = await chatStore.getSessionSettings(sessionId)
   if (!session || !settings) {
     return
   }
-  const { newUserMsg, needGenerating } = params
+  const { newUserMsg, needGenerating, multiModels } = params
   const webBrowsing = uiStore.getState().inputBoxWebBrowsingMode
 
   // 先在聊天列表中插入发送的用户消息
@@ -603,6 +618,16 @@ export async function submitNewUserMessage(
   const globalSettings = settingsStore.getState().getSettings()
   const isPro = settingActions.isPro()
   const remoteConfig = settingActions.getRemoteConfig()
+
+  // 多模型模式：为每个模型创建分支并生成回复
+  if (multiModels && multiModels.length > 1 && needGenerating) {
+    return submitMultiModelMessages(sessionId, newUserMsg, multiModels)
+  }
+
+  // 如果多模型模式下只选择了一个模型，使用该模型覆盖会话设置
+  const effectiveSettings = (multiModels && multiModels.length === 1)
+    ? { ...settings, provider: multiModels[0].provider as ModelProvider, modelId: multiModels[0].modelId }
+    : settings
 
   // 根据需要，插入空白的回复消息
   let newAssistantMsg = createMessage('assistant', '')
@@ -633,7 +658,7 @@ export async function submitNewUserMessage(
     // 如果本次消息开启了联网问答，需要检查当前模型是否支持
     // 桌面版&手机端总是支持联网问答，不再需要检查模型是否支持
     const dependencies = await createModelDependencies()
-    const model = getModel(settings, globalSettings, { uuid: '' }, dependencies)
+    const model = getModel(effectiveSettings, globalSettings, { uuid: '' }, dependencies)
     if (webBrowsing && platform.type === 'web' && !model.isSupportToolUse()) {
       if (remoteConfig.setting_chatboxai_first) {
         throw ChatboxAIAPIError.fromCodeName('model_not_support_web_browsing', 'model_not_support_web_browsing')
@@ -680,7 +705,7 @@ export async function submitNewUserMessage(
       ...newAssistantMsg,
       generating: false,
       cancel: undefined,
-      model: await getModelDisplayName(settings, globalSettings, 'chat'),
+      model: await getModelDisplayName(effectiveSettings, globalSettings, 'chat'),
       contentParts: [{ type: 'text', text: '' }],
       errorCode,
       error: `${error.message}`, // 这么写是为了避免类型问题
@@ -695,8 +720,167 @@ export async function submitNewUserMessage(
   }
   // 根据需要，生成这条回复消息
   if (needGenerating) {
-    return generate(sessionId, newAssistantMsg, { operationType: 'send_message' })
+    return generateWithSettings(sessionId, newAssistantMsg, effectiveSettings, { operationType: 'send_message' })
   }
+}
+
+/**
+ * 多模型同时生成回复
+ * 为每个模型创建分支并并行生成回复
+ */
+async function submitMultiModelMessages(
+  sessionId: string,
+  userMsg: Message,
+  multiModels: Array<{ provider: string; modelId: string }>
+) {
+  const session = await chatStore.getSession(sessionId)
+  if (!session) return
+
+  const isPro = settingActions.isPro()
+
+  // 创建所有 assistant 消息
+  const assistantMessages: Array<{ msg: Message; modelInfo: typeof multiModels[0] }> = []
+  
+  for (const modelInfo of multiModels) {
+    const assistantMsg = createMessage('assistant', '')
+    assistantMsg.generating = true
+    if (userMsg.files && userMsg.files.length > 0) {
+      assistantMsg.status = [{ type: 'sending_file', mode: isPro ? 'advanced' : 'local' }]
+    }
+    if (userMsg.links && userMsg.links.length > 0) {
+      assistantMsg.status = [...(assistantMsg.status || []), { type: 'loading_webpage', mode: isPro ? 'advanced' : 'local' }]
+    }
+    assistantMessages.push({ msg: assistantMsg, modelInfo })
+  }
+
+  // 第一个消息插入到主消息列表
+  const firstEntry = assistantMessages[0]
+  await insertMessage(sessionId, firstEntry.msg)
+
+  // 如果有多个模型，为其他模型创建分支
+  if (assistantMessages.length > 1) {
+    // 创建分支结构（在 userMsg 处创建分支，其他 assistant 消息放入分支）
+    await createMultiModelForks(sessionId, userMsg.id, assistantMessages.slice(1).map(e => e.msg))
+  }
+
+  // 等待分支创建完成后再开始生成
+  // 串行启动生成，确保每个消息都能被正确找到
+  for (const { msg, modelInfo } of assistantMessages) {
+    // 不使用 await，让它们并行执行
+    generateWithModel(sessionId, msg, modelInfo, { operationType: 'send_message' })
+  }
+}
+
+/**
+ * 为多模型对话创建分支结构
+ * 在指定消息后创建多个分支，每个分支包含一个 assistant 消息
+ * 
+ * 注意：主消息列表中已经包含第一个 assistant 消息，
+ * 这里只为其他 assistant 消息创建分支
+ */
+async function createMultiModelForks(
+  sessionId: string,
+  forkMessageId: string,
+  branchMessages: Message[]
+) {
+  await chatStore.updateSessionWithMessages(sessionId, (session) => {
+    if (!session) {
+      throw new Error('Session not found')
+    }
+
+    const forkMessageIndex = session.messages.findIndex((m) => m.id === forkMessageId)
+    if (forkMessageIndex < 0) {
+      return session
+    }
+
+    // 获取现有的 fork 结构
+    const existingFork = session.messageForksHash?.[forkMessageId]
+    
+    // 当前主分支上的消息（forkMessage 之后的消息，即第一个 assistant 消息）
+    const mainBranchMessages = session.messages.slice(forkMessageIndex + 1)
+    
+    // 创建分支列表
+    const lists: Array<{ id: string; messages: Message[] }> = []
+    
+    if (existingFork) {
+      // 如果已有分支，保留现有分支
+      lists.push(...existingFork.lists)
+    } else {
+      // 创建主分支（空消息列表，因为主消息已经在 session.messages 中）
+      // position = 0 表示当前显示主分支，主分支的消息就是 session.messages 中 forkMessage 之后的消息
+      lists.push({
+        id: `fork_list_${uuidv4()}`,
+        messages: [], // 空列表，实际消息在 session.messages 中
+      })
+    }
+    
+    // 为每个新的 assistant 消息创建分支
+    for (const msg of branchMessages) {
+      lists.push({
+        id: `fork_list_${uuidv4()}`,
+        messages: [msg],
+      })
+    }
+
+    const newFork = {
+      position: existingFork?.position ?? 0,
+      lists,
+      createdAt: existingFork?.createdAt ?? Date.now(),
+    }
+
+    return {
+      ...session,
+      // 保持主消息列表不变（包含第一个 assistant 消息）
+      messages: session.messages,
+      messageForksHash: {
+        ...session.messageForksHash,
+        [forkMessageId]: newFork,
+      },
+    }
+  })
+}
+
+/**
+ * 使用指定模型生成回复
+ */
+async function generateWithModel(
+  sessionId: string,
+  targetMsg: Message,
+  modelInfo: { provider: string; modelId: string },
+  options?: { operationType?: 'send_message' | 'regenerate' }
+) {
+  const session = await chatStore.getSession(sessionId)
+  const baseSettings = await chatStore.getSessionSettings(sessionId)
+  const globalSettings = settingsStore.getState().getSettings()
+  
+  if (!session || !baseSettings) return
+
+  // 使用指定的模型覆盖会话设置
+  const settings = {
+    ...baseSettings,
+    provider: modelInfo.provider as ModelProvider,
+    modelId: modelInfo.modelId,
+  }
+
+  return generateInternal(sessionId, targetMsg, settings, globalSettings, session, options)
+}
+
+/**
+ * 使用指定设置生成回复
+ * 用于多模型模式下只选择了一个模型的情况
+ */
+async function generateWithSettings(
+  sessionId: string,
+  targetMsg: Message,
+  settings: SessionSettings,
+  options?: { operationType?: 'send_message' | 'regenerate' }
+) {
+  const session = await chatStore.getSession(sessionId)
+  const globalSettings = settingsStore.getState().getSettings()
+  
+  if (!session) return
+
+  return generateInternal(sessionId, targetMsg, settings, globalSettings, session, options)
 }
 
 /**
@@ -896,15 +1080,226 @@ async function generate(
 }
 
 /**
+ * 内部生成函数，支持指定模型设置
+ * 用于多模型并行生成场景
+ */
+async function generateInternal(
+  sessionId: string,
+  targetMsg: Message,
+  settings: SessionSettings,
+  globalSettings: Settings,
+  _session: Session, // 传入的 session 可能已过期，需要重新获取
+  options?: { operationType?: 'send_message' | 'regenerate' }
+) {
+  const configs = await platform.getConfig()
+
+  // 重新获取最新的 session 数据
+  const session = await chatStore.getSession(sessionId)
+  if (!session) return
+
+  // 跟踪生成事件
+  trackGenerateEvent(settings, globalSettings, session.type, options)
+
+  // 将消息的状态修改成初始状态
+  targetMsg = {
+    ...targetMsg,
+    cancel: undefined,
+    aiProvider: settings.provider,
+    model: await getModelDisplayName(settings, globalSettings, session.type || 'chat'),
+    style: session.type === 'picture' ? settings.dalleStyle : undefined,
+    generating: true,
+    errorCode: undefined,
+    error: undefined,
+    errorExtra: undefined,
+    status: [],
+    firstTokenLatency: undefined,
+    isStreamingMode: settings.stream !== false,
+  }
+
+  await modifyMessage(sessionId, targetMsg)
+
+  // 获取目标消息所在的消息列表
+  let messages = session.messages
+  let targetMsgIx = messages.findIndex((m) => m.id === targetMsg.id)
+  
+  // 在分支中查找
+  if (targetMsgIx < 0 && session.messageForksHash) {
+    for (const [forkMsgId, forkData] of Object.entries(session.messageForksHash)) {
+      for (const branch of forkData.lists) {
+        const idx = branch.messages.findIndex((m) => m.id === targetMsg.id)
+        if (idx >= 0) {
+          // 构建完整的消息上下文：主消息链到分支点 + 分支消息到目标
+          const forkMsgIdx = session.messages.findIndex((m) => m.id === forkMsgId)
+          if (forkMsgIdx >= 0) {
+            messages = [...session.messages.slice(0, forkMsgIdx + 1), ...branch.messages.slice(0, idx + 1)]
+            targetMsgIx = messages.length - 1
+          }
+          break
+        }
+      }
+      if (targetMsgIx >= 0) break
+    }
+  }
+
+  // 在 threads 中查找
+  if (targetMsgIx < 0) {
+    if (!session.threads) return
+    for (const t of session.threads) {
+      messages = t.messages
+      targetMsgIx = messages.findIndex((m) => m.id === targetMsg.id)
+      if (targetMsgIx >= 0) break
+    }
+    if (targetMsgIx < 0) return
+  }
+
+  // 目标消息必须有前置消息（至少有用户消息）
+  if (targetMsgIx <= 0) return
+
+  try {
+    const dependencies = await createModelDependencies()
+    const model = getModel(settings, globalSettings, configs, dependencies)
+    const sessionKnowledgeBaseMap = uiStore.getState().sessionKnowledgeBaseMap
+    const knowledgeBase = sessionKnowledgeBaseMap[sessionId]
+    const webBrowsing = uiStore.getState().inputBoxWebBrowsingMode
+
+    const startTime = Date.now()
+    let firstTokenLatency: number | undefined
+    const persistInterval = 2000
+    let lastPersistTimestamp = Date.now()
+    const promptMsgs = await genMessageContext(settings, messages.slice(0, targetMsgIx), model.isSupportToolUse())
+    
+    const modifyMessageCache: OnResultChangeWithCancel = async (updated) => {
+      const textLength = getMessageText(targetMsg, true, true).length
+      if (!firstTokenLatency && textLength > 0) {
+        firstTokenLatency = Date.now() - startTime
+      }
+      targetMsg = {
+        ...targetMsg,
+        ...pickBy(updated, identity),
+        status: textLength > 0 ? [] : targetMsg.status,
+        firstTokenLatency,
+      }
+      const shouldPersist = Date.now() - lastPersistTimestamp >= persistInterval
+      await modifyMessage(sessionId, targetMsg, false, !shouldPersist)
+      if (shouldPersist) {
+        lastPersistTimestamp = Date.now()
+      }
+    }
+
+    const result = await streamText(model, {
+      sessionId: session.id,
+      messages: promptMsgs,
+      onResultChangeWithCancel: modifyMessageCache,
+      providerOptions: settings.providerOptions,
+      knowledgeBase,
+      webBrowsing,
+    })
+    
+    targetMsg = {
+      ...targetMsg,
+      generating: false,
+      cancel: undefined,
+      tokensUsed: targetMsg.tokensUsed ?? estimateTokensFromMessages([...promptMsgs, targetMsg]),
+      status: [],
+      finishReason: result.finishReason,
+      usage: result.usage,
+    }
+    await modifyMessage(sessionId, targetMsg, true)
+  } catch (err: unknown) {
+    const error = !(err instanceof Error) ? new Error(`${err}`) : err
+    if (
+      !(
+        error instanceof ApiError ||
+        error instanceof NetworkError ||
+        error instanceof AIProviderNoImplementedPaintError
+      )
+    ) {
+      Sentry.captureException(error)
+    }
+    let errorCode: number | undefined
+    if (err instanceof BaseError) {
+      errorCode = err.code
+    }
+    targetMsg = {
+      ...targetMsg,
+      generating: false,
+      cancel: undefined,
+      errorCode,
+      error: `${error.message}`,
+      errorExtra: {
+        aiProvider: settings.provider,
+        host: error instanceof NetworkError ? error.host : undefined,
+        responseBody: (error as any).responseBody,
+      },
+      status: [],
+    }
+    await modifyMessage(sessionId, targetMsg, true)
+  }
+}
+
+/**
  * 在目标消息下方插入并生成一条新消息
  * @param sessionId 会话ID
  * @param msgId 消息ID
+ * @param multiModels 多模型模式下的模型列表（可选）
  */
-export async function generateMore(sessionId: string, msgId: string) {
+export async function generateMore(
+  sessionId: string, 
+  msgId: string,
+  multiModels?: Array<{ provider: string; modelId: string }>
+) {
+  // 多模型模式：为每个模型创建分支并生成回复
+  if (multiModels && multiModels.length > 1) {
+    return generateMoreMultiModel(sessionId, msgId, multiModels)
+  }
+
   const newAssistantMsg = createMessage('assistant', '')
   newAssistantMsg.generating = true // prevent estimating token count before generating done
   await insertMessageAfter(sessionId, newAssistantMsg, msgId)
-  await generate(sessionId, newAssistantMsg, { operationType: 'regenerate' })
+  
+  // 如果多模型模式下只选择了一个模型，使用该模型
+  if (multiModels && multiModels.length === 1) {
+    await generateWithModel(sessionId, newAssistantMsg, multiModels[0], { operationType: 'regenerate' })
+  } else {
+    await generate(sessionId, newAssistantMsg, { operationType: 'regenerate' })
+  }
+}
+
+/**
+ * 多模型模式下在目标消息下方生成多条回复
+ * 为每个模型创建分支并并行生成回复
+ */
+async function generateMoreMultiModel(
+  sessionId: string,
+  msgId: string,
+  multiModels: Array<{ provider: string; modelId: string }>
+) {
+  const session = await chatStore.getSession(sessionId)
+  if (!session) return
+
+  // 创建所有 assistant 消息
+  const assistantMessages: Array<{ msg: Message; modelInfo: typeof multiModels[0] }> = []
+  
+  for (const modelInfo of multiModels) {
+    const assistantMsg = createMessage('assistant', '')
+    assistantMsg.generating = true
+    assistantMessages.push({ msg: assistantMsg, modelInfo })
+  }
+
+  // 第一个消息插入到主消息列表
+  const firstEntry = assistantMessages[0]
+  await insertMessageAfter(sessionId, firstEntry.msg, msgId)
+
+  // 如果有多个模型，为其他模型创建分支
+  if (assistantMessages.length > 1) {
+    // 创建分支结构（在 msgId 处创建分支，其他 assistant 消息放入分支）
+    await createMultiModelForks(sessionId, msgId, assistantMessages.slice(1).map(e => e.msg))
+  }
+
+  // 并行启动所有模型的生成
+  for (const { msg, modelInfo } of assistantMessages) {
+    generateWithModel(sessionId, msg, modelInfo, { operationType: 'regenerate' })
+  }
 }
 
 export async function generateMoreInNewFork(sessionId: string, msgId: string) {
@@ -992,14 +1387,18 @@ function findMessageLocation(session: Session, messageId: string): MessageLocati
   return null
 }
 
-type GenerateMoreFn = (sessionId: string, msgId: string) => Promise<void>
+type GenerateMoreFn = (sessionId: string, msgId: string, multiModels?: Array<{ provider: string; modelId: string }>) => Promise<void>
 
 export async function regenerateInNewFork(
   sessionId: string,
   msg: Message,
-  options?: { runGenerateMore?: GenerateMoreFn }
+  options?: { 
+    runGenerateMore?: GenerateMoreFn
+    multiModels?: Array<{ provider: string; modelId: string }>
+  }
 ) {
   const runGenerateMore = options?.runGenerateMore ?? generateMore
+  const multiModels = options?.multiModels
   const session = await chatStore.getSession(sessionId)
   if (!session) {
     return
@@ -1017,7 +1416,7 @@ export async function regenerateInNewFork(
   }
   const forkMessage = location.list[previousMessageIndex]
   await createNewFork(sessionId, forkMessage.id)
-  return runGenerateMore(sessionId, forkMessage.id)
+  return runGenerateMore(sessionId, forkMessage.id, multiModels)
 }
 
 async function _generateName(sessionId: string, modifyName: (sessionId: string, name: string) => void) {
@@ -1636,9 +2035,8 @@ function buildCreateForkPatch(session: Session, forkMessageId: string): Partial<
       }
 
       const backupMessages = messages.slice(forkMessageIndex + 1)
-      if (backupMessages.length === 0) {
-        return null
-      }
+      // 即使没有后续消息（叶子节点），也允许创建新分支
+      // 这样可以在任意节点下创建并列的新分支
 
       const storedListId = `fork_list_${uuidv4()}`
       const newBranchId = `fork_list_${uuidv4()}`

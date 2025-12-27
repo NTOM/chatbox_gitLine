@@ -35,6 +35,7 @@ import {
   useMantineColorScheme,
   virtualColor,
 } from '@mantine/core'
+import { ModalsProvider } from '@mantine/modals'
 import { Box, Grid } from '@mui/material'
 import CssBaseline from '@mui/material/CssBaseline'
 import { ThemeProvider } from '@mui/material/styles'
@@ -481,14 +482,16 @@ export const Route = createRootRoute({
         theme={mantineTheme}
         defaultColorScheme={_theme === Theme.Dark ? 'dark' : _theme === Theme.Light ? 'light' : 'auto'}
       >
-        <ThemeProvider theme={theme}>
-          <CssBaseline />
-          <NiceModal.Provider>
-            <ErrorBoundary>
-              <Root />
-            </ErrorBoundary>
-          </NiceModal.Provider>
-        </ThemeProvider>
+        <ModalsProvider>
+          <ThemeProvider theme={theme}>
+            <CssBaseline />
+            <NiceModal.Provider>
+              <ErrorBoundary>
+                <Root />
+              </ErrorBoundary>
+            </NiceModal.Provider>
+          </ThemeProvider>
+        </ModalsProvider>
       </MantineProvider>
     )
   },

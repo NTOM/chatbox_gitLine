@@ -17,6 +17,7 @@ import { getMessageText } from 'src/shared/utils/message'
 import { copyToClipboard } from '@/packages/navigator'
 import * as toastActions from '@/stores/toastActions'
 import { useUIStore } from '@/stores/uiStore'
+import { useMultiModelStore } from '@/stores/multiModelStore'
 import { regenerateInNewFork, removeMessage, switchToMessageBranch } from '@/stores/sessionActions'
 
 type AssistantNodeProps = {
@@ -24,11 +25,18 @@ type AssistantNodeProps = {
   selected?: boolean
 }
 
-function AssistantNodeComponent({ data, selected }: AssistantNodeProps) {
+function AssistantNodeComponent({ data, selected: _rfSelected }: AssistantNodeProps) {
   const { t } = useTranslation()
   const [isHovered, setIsHovered] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const setQuote = useUIStore((state) => state.setQuote)
+  
+  // 多模型配置
+  const multiModelEnabled = useMultiModelStore((s) => s.multiModelEnabled)
+  const selectedModels = useMultiModelStore((s) => s.selectedModels)
+  
+  // 使用我们自己管理的选中状态，而不是 ReactFlow 的 selected
+  const isSelected = data.isSelected ?? false
   
   const previewText = getMessagePreviewText(data.message, 100)
   const timestamp = data.message.timestamp
@@ -67,8 +75,9 @@ function AssistantNodeComponent({ data, selected }: AssistantNodeProps) {
   // 重新生成
   const handleRegenerate = useCallback((e: React.MouseEvent) => {
     e.stopPropagation()
-    regenerateInNewFork(data.sessionId, data.message)
-  }, [data.message, data.sessionId])
+    const multiModels = multiModelEnabled && selectedModels.length > 0 ? selectedModels : undefined
+    regenerateInNewFork(data.sessionId, data.message, { multiModels })
+  }, [data.message, data.sessionId, multiModelEnabled, selectedModels])
 
   // 删除消息 - 在所有分支都有效
   const handleDelete = useCallback((e: React.MouseEvent) => {
@@ -108,13 +117,19 @@ function AssistantNodeComponent({ data, selected }: AssistantNodeProps) {
         data.isActivePath && 'ring-2 ring-green-400 ring-offset-2 dark:ring-offset-gray-900',
         !data.isActivePath && 'opacity-70 dark:opacity-80',
         hasError && 'border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/30',
-        selected && 'border-green-500 shadow-lg',
+        isSelected && 'border-green-500',
         isHovered && 'shadow-md'
       )}
-      style={isBranch && !data.isActivePath && !hasError ? {
-        borderColor: branchColor?.border,
-        backgroundColor: branchColor?.bg,
-      } : undefined}
+      style={{
+        ...(isBranch && !data.isActivePath && !hasError ? {
+          borderColor: branchColor?.border,
+          backgroundColor: branchColor?.bg,
+        } : {}),
+        ...(isSelected ? {
+          boxShadow: '0 0 20px 4px rgba(34, 197, 94, 0.5), 0 0 40px 8px rgba(34, 197, 94, 0.25)',
+          animation: 'node-glow-pulse 2s ease-in-out infinite',
+        } : {}),
+      }}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
@@ -215,14 +230,16 @@ function AssistantNodeComponent({ data, selected }: AssistantNodeProps) {
         </div>
       )}
 
-      {/* 子分支指示器 */}
+      {/* 多分支点指示器 - 当此节点下有多个分支时显示 */}
       {data.childrenCount > 1 && (
-        <div className={cn(
-          'mt-1 text-xs text-purple-500 dark:text-purple-400 flex items-center gap-1',
-          !data.isActivePath && 'dark:text-purple-700'
-        )}>
-          <IconGitFork size={12} />
-          {data.childrenCount} branches below
+        <div className="absolute -right-1 -bottom-1 flex items-center justify-center">
+          <div className={cn(
+            'w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold',
+            'bg-purple-500 text-white shadow-lg',
+            'animate-pulse'
+          )}>
+            {data.childrenCount}
+          </div>
         </div>
       )}
 

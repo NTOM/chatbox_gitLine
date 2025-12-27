@@ -56,6 +56,11 @@ function RouteComponent() {
                   </Button>
                 )}
               </Flex>
+              {showForkInfo && (
+                <Text c="chatbox-primary" size="sm" className="bg-chatbox-background p-2 rounded border border-chatbox-border">
+                  这是一个fork分支，不定期维护，主要用于提供另一种git类交互方式，从而进行不同模型答案的比对，满足不同人的需要。
+                </Text>
+              )}
               <Text>{t('about-slogan')}</Text>
               <Text c="chatbox-tertiary">{t('about-introduction')}</Text>
 
@@ -103,19 +108,12 @@ function RouteComponent() {
               link="https://github.com/chatboxai/chatbox"
               value="chatbox"
             />
-            {/* <ListItem
-              icon={<BrandX className="w-full h-full" />}
-              title={t('X(Twitter)')}
-              link="https://x.com/ChatboxAI_HQ"
-              value="@ChatboxAI_HQ"
-            /> */}
             <ListItem
-              icon={<BrandRedNote className="w-full h-full" />}
-              title={t('RedNote')}
-              link="https://www.xiaohongshu.com/user/profile/67b581b6000000000e01d11f"
-              value="@63844903136"
+              icon={<BrandGithub className="w-full h-full" />}
+              title="Github (Tree Version)"
+              link="https://github.com/NTOM/chatbox_gitLine"
+              value="chatbox_gitLine"
             />
-            <ListItem icon={<BrandWechat className="w-full h-full" />} title={t('WeChat')} right={<WechatQRCode />} />
           </List>
 
           <List>

@@ -21,6 +21,7 @@ import { getMessageText } from 'src/shared/utils/message'
 import { copyToClipboard } from '@/packages/navigator'
 import * as toastActions from '@/stores/toastActions'
 import { useUIStore } from '@/stores/uiStore'
+import { useMultiModelStore } from '@/stores/multiModelStore'
 import { regenerateInNewFork, removeMessage } from '@/stores/sessionActions'
 import { cn } from '@/lib/utils'
 
@@ -44,6 +45,10 @@ function NodeActionBarComponent({
   const { t } = useTranslation()
   const setQuote = useUIStore((state) => state.setQuote)
   const [isDeleting, setIsDeleting] = useState(false)
+  
+  // 多模型配置
+  const multiModelEnabled = useMultiModelStore((s) => s.multiModelEnabled)
+  const selectedModels = useMultiModelStore((s) => s.selectedModels)
 
   // 复制消息
   const handleCopy = useCallback((e: React.MouseEvent) => {
@@ -72,8 +77,9 @@ function NodeActionBarComponent({
   // 重新生成
   const handleRegenerate = useCallback((e: React.MouseEvent) => {
     e.stopPropagation()
-    regenerateInNewFork(session.id, message)
-  }, [message, session.id])
+    const multiModels = multiModelEnabled && selectedModels.length > 0 ? selectedModels : undefined
+    regenerateInNewFork(session.id, message, { multiModels })
+  }, [message, session.id, multiModelEnabled, selectedModels])
 
   // 删除消息
   const handleDelete = useCallback((e: React.MouseEvent) => {

@@ -25,11 +25,14 @@ type UserNodeProps = {
   selected?: boolean
 }
 
-function UserNodeComponent({ data, selected }: UserNodeProps) {
+function UserNodeComponent({ data, selected: _rfSelected }: UserNodeProps) {
   const { t } = useTranslation()
   const [isHovered, setIsHovered] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const setQuote = useUIStore((state) => state.setQuote)
+  
+  // 使用我们自己管理的选中状态，而不是 ReactFlow 的 selected
+  const isSelected = data.isSelected ?? false
   
   const previewText = getMessagePreviewText(data.message, 100)
   const timestamp = data.message.timestamp
@@ -106,13 +109,19 @@ function UserNodeComponent({ data, selected }: UserNodeProps) {
         'bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-700',
         data.isActivePath && 'ring-2 ring-blue-400 ring-offset-2 dark:ring-offset-gray-900',
         !data.isActivePath && 'opacity-70 dark:opacity-80',
-        selected && 'border-blue-500 shadow-lg',
+        isSelected && 'border-blue-500',
         isHovered && 'shadow-md'
       )}
-      style={isBranch && !data.isActivePath ? {
-        borderColor: branchColor?.border,
-        backgroundColor: branchColor?.bg,
-      } : undefined}
+      style={{
+        ...(isBranch && !data.isActivePath ? {
+          borderColor: branchColor?.border,
+          backgroundColor: branchColor?.bg,
+        } : {}),
+        ...(isSelected ? {
+          boxShadow: '0 0 20px 4px rgba(59, 130, 246, 0.5), 0 0 40px 8px rgba(59, 130, 246, 0.25)',
+          animation: 'node-glow-pulse 2s ease-in-out infinite',
+        } : {}),
+      }}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
@@ -178,6 +187,19 @@ function UserNodeComponent({ data, selected }: UserNodeProps) {
         >
           <IconGitBranch size={12} />
           Branch {data.branchIndex + 1}/{data.branchCount}
+        </div>
+      )}
+
+      {/* 多分支点指示器 - 当此节点下有多个分支时显示 */}
+      {data.childrenCount > 1 && (
+        <div className="absolute -right-1 -bottom-1 flex items-center justify-center">
+          <div className={cn(
+            'w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold',
+            'bg-purple-500 text-white shadow-lg',
+            'animate-pulse'
+          )}>
+            {data.childrenCount}
+          </div>
         </div>
       )}
 

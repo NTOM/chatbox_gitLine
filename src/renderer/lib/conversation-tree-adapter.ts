@@ -29,6 +29,8 @@ export interface TreeNodeData extends Record<string, unknown> {
   childrenCount: number
   /** 深度层级 */
   depth: number
+  /** 是否被选中（由外部状态管理） */
+  isSelected?: boolean
 }
 
 /** ReactFlow 节点类型 */
@@ -183,7 +185,7 @@ function processForks(
 
       // 检查此消息是否也有分支
       const nestedFork = session.messageForksHash?.[message.id]
-      const hasNestedFork = nestedFork && nestedFork.lists.length > 1
+      const hasNestedFork = nestedFork && nestedFork.lists.length > 0
 
       const node = createNode(message, {
         sessionId: session.id,

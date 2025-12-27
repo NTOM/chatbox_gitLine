@@ -94,7 +94,7 @@ function Index() {
   }, [routerState.location.search])
 
   const handleSubmit = useCallback(
-    async ({ constructedMessage, needGenerating = true }: InputBoxPayload) => {
+    async ({ constructedMessage, needGenerating = true, multiModels }: InputBoxPayload) => {
       const newSession = await createSessionStore({
         name: session.name,
         type: 'chat',
@@ -117,6 +117,7 @@ function Index() {
       void submitNewUserMessage(newSession.id, {
         newUserMsg: constructedMessage,
         needGenerating,
+        multiModels,
       })
     },
     [session, addSessionKnowledgeBase, newSessionState.knowledgeBase, setNewSessionState]

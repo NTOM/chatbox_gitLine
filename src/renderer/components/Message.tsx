@@ -41,6 +41,7 @@ import type { Message, MessagePicture, MessageToolCallPart, SessionType } from '
 import { getMessageText } from '../../shared/utils/message'
 import '../static/Block.css'
 import { generateMore, modifyMessage, regenerateInNewFork, removeMessage } from '../stores/sessionActions'
+import { useMultiModelStore } from '../stores/multiModelStore'
 import * as toastActions from '../stores/toastActions'
 import ActionMenu, { type ActionMenuItemProps } from './ActionMenu'
 import { isContainRenderableCode, MessageArtifact } from './Artifact'
@@ -112,6 +113,10 @@ const _Message: FC<Props> = (props) => {
   const ref = useRef<HTMLDivElement>(null)
 
   const setQuote = useUIStore((state) => state.setQuote)
+  
+  // 多模型配置
+  const multiModelEnabled = useMultiModelStore((s) => s.multiModelEnabled)
+  const selectedModels = useMultiModelStore((s) => s.selectedModels)
 
   const quoteMsg = useCallback(() => {
     let input = getMessageText(msg)
@@ -126,13 +131,18 @@ const _Message: FC<Props> = (props) => {
     modifyMessage(sessionId, { ...msg, generating: false }, true)
   }
 
+  // 获取多模型配置
+  const getMultiModels = useCallback(() => {
+    return multiModelEnabled && selectedModels.length > 0 ? selectedModels : undefined
+  }, [multiModelEnabled, selectedModels])
+
   const handleRefresh = () => {
     handleStop()
-    regenerateInNewFork(sessionId, msg)
+    regenerateInNewFork(sessionId, msg, { multiModels: getMultiModels() })
   }
 
   const onGenerateMore = () => {
-    generateMore(sessionId, msg.id)
+    generateMore(sessionId, msg.id, getMultiModels())
   }
 
   const onCopyMsg = () => {

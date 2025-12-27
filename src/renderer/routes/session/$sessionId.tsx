@@ -4,6 +4,7 @@ import InputBox from '@/components/InputBox/InputBox'
 import MessageList, { type MessageListRef } from '@/components/MessageList'
 import ThreadHistoryDrawer from '@/components/ThreadHistoryDrawer'
 import { ConversationTreeView } from '@/components/conversation-tree'
+import TreeToolbar from '@/components/conversation-tree/TreeToolbar'
 import { updateSession as updateSessionStore, useSession } from '@/stores/chatStore'
 import { lastUsedModelStore } from '@/stores/lastUsedModelStore'
 import * as scrollActions from '@/stores/scrollActions'
@@ -30,6 +31,13 @@ function RouteComponent() {
   const setLastUsedChatModel = useStore(lastUsedModelStore, (state) => state.setChatModel)
   const setLastUsedPictureModel = useStore(lastUsedModelStore, (state) => state.setPictureModel)
   const viewMode = useViewModeStore((s) => s.viewMode)
+  
+  // 树形图工具栏相关状态
+  const interactionMode = useViewModeStore((s) => s.interactionMode)
+  const setInteractionMode = useViewModeStore((s) => s.setInteractionMode)
+  const selectedNodeId = useViewModeStore((s) => s.selectedNodeId)
+  const selectedNodeIds = useViewModeStore((s) => s.selectedNodeIds)
+  const treeUndoState = useViewModeStore((s) => s.treeUndoState)
 
   const currentMessageList = useMemo(() => (currentSession ? getAllMessageList(currentSession) : []), [currentSession])
   const lastGeneratingMessage = useMemo(
@@ -103,9 +111,11 @@ function RouteComponent() {
     async ({
       constructedMessage,
       needGenerating = true,
+      multiModels,
     }: {
       constructedMessage: Message
       needGenerating?: boolean
+      multiModels?: Array<{ provider: string; modelId: string }>
     }) => {
       if (!currentSession) {
         return
@@ -114,6 +124,7 @@ function RouteComponent() {
       await submitNewUserMessage(currentSession.id, {
         newUserMsg: constructedMessage,
         needGenerating,
+        multiModels,
       })
     },
     [currentSession]
@@ -158,13 +169,27 @@ function RouteComponent() {
       {viewMode === 'list' ? (
         <MessageList ref={messageListRef} key={`message-list${currentSessionId}`} currentSession={currentSession} />
       ) : (
-        <div className="flex-1 min-h-0">
-          <ConversationTreeView
-            key={`tree-view${currentSessionId}`}
-            session={currentSession}
-            className="h-full"
-          />
-        </div>
+        <ConversationTreeView
+          key={`tree-view${currentSessionId}`}
+          session={currentSession}
+          className="flex-1 min-h-0"
+        />
+      )}
+
+      {/* 树形图工具栏 - 始终紧贴在输入框上方 */}
+      {viewMode === 'tree' && (
+        <TreeToolbar
+          mode={interactionMode}
+          onModeChange={setInteractionMode}
+          selectedCount={interactionMode === 'click' ? (selectedNodeId ? 1 : 0) : selectedNodeIds.length}
+          onFocus={() => window.dispatchEvent(new CustomEvent('tree-toolbar-focus'))}
+          onDelete={() => window.dispatchEvent(new CustomEvent('tree-toolbar-delete'))}
+          onAutoLayout={() => window.dispatchEvent(new CustomEvent('tree-toolbar-auto-layout'))}
+          onUndo={() => window.dispatchEvent(new CustomEvent('tree-toolbar-undo'))}
+          canFocus={interactionMode === 'click' ? !!selectedNodeId : selectedNodeIds.length > 0}
+          canDelete={interactionMode === 'click' ? !!selectedNodeId : selectedNodeIds.length > 0}
+          canUndo={treeUndoState !== null && treeUndoState.sessionId === currentSession.id}
+        />
       )}
 
       {/* <ScrollButtons /> */}

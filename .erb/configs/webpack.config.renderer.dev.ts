@@ -201,6 +201,22 @@ const configuration: webpack.Configuration = {
     historyApiFallback: {
       verbose: true,
     },
+    client: {
+      overlay: {
+        errors: true,
+        warnings: false,
+        runtimeErrors: (error) => {
+          // 忽略 ResizeObserver 的无害错误
+          if (error.message && (
+            error.message.includes('ResizeObserver loop completed with undelivered notifications') ||
+            error.message.includes('ResizeObserver loop limit exceeded')
+          )) {
+            return false
+          }
+          return true
+        },
+      },
+    },
     setupMiddlewares(middlewares) {
       console.log('Starting preload.js builder...')
       const preloadProcess = spawn('npm', ['run', 'start:preload'], {

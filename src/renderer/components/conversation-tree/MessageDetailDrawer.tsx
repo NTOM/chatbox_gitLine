@@ -26,6 +26,7 @@ import Markdown from '@/components/Markdown'
 import { BlockCodeCollapsedStateProvider } from '@/components/Markdown'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useUIStore } from '@/stores/uiStore'
+import { useMultiModelStore } from '@/stores/multiModelStore'
 import { copyToClipboard } from '@/packages/navigator'
 import * as toastActions from '@/stores/toastActions'
 import { regenerateInNewFork, removeMessage } from '@/stores/sessionActions'
@@ -58,6 +59,10 @@ export function MessageDetailDrawer({
     showWordCount,
   } = useSettingsStore()
   const setQuote = useUIStore((state) => state.setQuote)
+  
+  // 多模型配置
+  const multiModelEnabled = useMultiModelStore((s) => s.multiModelEnabled)
+  const selectedModels = useMultiModelStore((s) => s.selectedModels)
 
   // 获取消息文本内容
   const messageText = useMemo(() => {
@@ -99,9 +104,10 @@ export function MessageDetailDrawer({
   // 重新生成
   const handleRegenerate = useCallback(() => {
     if (!message || !session) return
-    regenerateInNewFork(session.id, message)
+    const multiModels = multiModelEnabled && selectedModels.length > 0 ? selectedModels : undefined
+    regenerateInNewFork(session.id, message, { multiModels })
     onClose()
-  }, [message, session, onClose])
+  }, [message, session, onClose, multiModelEnabled, selectedModels])
 
   // 删除消息
   const handleDelete = useCallback(() => {

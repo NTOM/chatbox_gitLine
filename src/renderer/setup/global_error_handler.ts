@@ -21,6 +21,21 @@ window.addEventListener('error', (event) => {
   }
 }, true) // 使用捕获阶段
 
+// 拦截 webpack-dev-server 的错误处理
+if (process.env.NODE_ENV === 'development') {
+  // 覆盖 window.onerror 以在 webpack overlay 之前拦截
+  const originalOnError = window.onerror
+  window.onerror = (message, source, lineno, colno, error) => {
+    if (typeof message === 'string' && isResizeObserverError(message)) {
+      return true // 阻止错误传播
+    }
+    if (originalOnError) {
+      return originalOnError(message, source, lineno, colno, error)
+    }
+    return false
+  }
+}
+
 // Global error handler for unhandled errors
 window.addEventListener('error', (event) => {
   // 忽略 ResizeObserver 的无害错误

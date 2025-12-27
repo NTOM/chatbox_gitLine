@@ -349,3 +349,13 @@ html[data-need-room-for-windows-controls="true"] .pswp__top-bar {
 *::-webkit-scrollbar-corner {
   background-color: transparent;
 }
+
+/* 节点发光动画 */
+@keyframes node-glow-pulse {
+  0%, 100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.05);
+  }
+}

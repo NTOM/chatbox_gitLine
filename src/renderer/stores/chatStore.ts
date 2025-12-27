@@ -383,6 +383,36 @@ export async function updateMessage(
       }
     }
 
+    // try find message in messageForksHash (分支消息)
+    if (session.messageForksHash) {
+      for (const [forkMsgId, forkData] of Object.entries(session.messageForksHash)) {
+        for (let branchIndex = 0; branchIndex < forkData.lists.length; branchIndex++) {
+          const branch = forkData.lists[branchIndex]
+          const message = branch.messages.find((m) => m.id === messageId)
+          if (message) {
+            return {
+              ...session,
+              messageForksHash: {
+                ...session.messageForksHash,
+                [forkMsgId]: {
+                  ...forkData,
+                  lists: forkData.lists.map((list, idx) => {
+                    if (idx !== branchIndex) {
+                      return list
+                    }
+                    return {
+                      ...list,
+                      messages: updateMessages(list.messages),
+                    }
+                  }),
+                },
+              },
+            } satisfies Session
+          }
+        }
+      }
+    }
+
     // try find message in threads
     if (session.threads) {
       for (const thread of session.threads) {
@@ -413,15 +443,219 @@ export async function removeMessage(sessionId: string, messageId: string) {
     if (!session) {
       throw new Error(`session ${sessionId} not found`)
     }
+
+    // ============ 重构后的删除逻辑 (V5) ============
+    // 设计目标：
+    // 1. 只删除目标消息及其直接下游（同一分支内）
+    // 2. 不影响其他分支的消息
+    // 3. 删除后自动切换到下一个有效分支（如果当前分支被清空）
+
+    const idsToDelete = new Set<string>()
+    const queue: string[] = [] // 用于广度优先搜索子分支
+
+    /**
+     * 核心辅助函数：标记一个消息ID为待删除
+     * 同时将其加入队列，以便后续检查它是否有子分支
+     */
+    const markForDeletion = (id: string) => {
+      if (!idsToDelete.has(id)) {
+        idsToDelete.add(id)
+        queue.push(id)
+      }
+    }
+
+    // ---------------------------------------------------------
+    // 第一步：找到目标消息，并标记它及其"线性下游"（只在同一分支内）
+    // ---------------------------------------------------------
+    let found = false
+    let foundInMainMessages = false
+    let foundInBranchForkId: string | null = null
+    let foundInBranchIndex: number = -1
+
+    // 1.1 在主消息列表中查找
+    const mainMsgIndex = session.messages.findIndex((m) => m.id === messageId)
+    if (mainMsgIndex >= 0) {
+      // 找到了！标记它和它后面的所有消息（只在主消息列表中）
+      for (let i = mainMsgIndex; i < session.messages.length; i++) {
+        markForDeletion(session.messages[i].id)
+      }
+      found = true
+      foundInMainMessages = true
+    }
+
+    // 1.2 如果主列表没找到，去所有分支列表中查找
+    if (!found && session.messageForksHash) {
+      // 遍历所有分叉点
+      for (const [forkId, forkData] of Object.entries(session.messageForksHash)) {
+        // 遍历该分叉点的所有分支
+        for (let branchIdx = 0; branchIdx < forkData.lists.length; branchIdx++) {
+          const branch = forkData.lists[branchIdx]
+          const branchMsgIndex = branch.messages.findIndex((m) => m.id === messageId)
+          if (branchMsgIndex >= 0) {
+            // 找到了！标记它和它在这个分支上的所有后续消息
+            for (let i = branchMsgIndex; i < branch.messages.length; i++) {
+              markForDeletion(branch.messages[i].id)
+            }
+            found = true
+            foundInBranchForkId = forkId
+            foundInBranchIndex = branchIdx
+            break // 找到就跳出当前 forkData
+          }
+        }
+        if (found) break // 找到就结束全局搜索
+      }
+    }
+
+    // 如果遍历完都没找到，说明消息可能已经被删了，直接返回原 session
+    if (!found) {
+      return session
+    }
+
+    // ---------------------------------------------------------
+    // 第二步：递归收集被删除消息的"子分支"（挂在被删消息上的分叉）
+    // ---------------------------------------------------------
+    // 只删除挂在被删消息上的子分支，不删除兄弟分支
+    
+    while (queue.length > 0) {
+      const currentId = queue.shift()!
+      
+      // 检查当前待删除的消息是否是某个分叉的根（即它是分叉点）
+      if (session.messageForksHash?.[currentId]) {
+        const forkData = session.messageForksHash[currentId]
+        
+        // 遍历该分叉点下的所有分支
+        for (const branch of forkData.lists) {
+          for (const msg of branch.messages) {
+            // 将分支里的所有消息都标记为删除
+            // 这会自动把它们加入队列，从而继续递归检查它们的子分支
+            markForDeletion(msg.id)
+          }
+        }
+      }
+    }
+
+    // ---------------------------------------------------------
+    // 第三步：执行物理删除和数据清理
+    // ---------------------------------------------------------
+
+    // 过滤主消息列表
+    let newMessages = session.messages.filter((m) => !idsToDelete.has(m.id))
+
+    // 3.1 准备新的 messageForksHash
+    let newMessageForksHash = session.messageForksHash ? { ...session.messageForksHash } : undefined
+
+    if (newMessageForksHash) {
+      // A. 删除无效的 Fork Entry（以被删消息为 key 的分叉）
+      for (const id of idsToDelete) {
+        if (newMessageForksHash[id]) {
+          delete newMessageForksHash[id]
+        }
+      }
+
+      // B. 清理剩余 Fork Entry 中的消息
+      const forkIds = Object.keys(newMessageForksHash)
+      for (const forkId of forkIds) {
+        const forkData = newMessageForksHash[forkId]
+        
+        // 过滤掉待删除的消息
+        let newLists = forkData.lists.map(branch => ({
+          ...branch,
+          messages: branch.messages.filter(m => !idsToDelete.has(m.id))
+        }))
+        
+        // 记录新的 position（可能会在分支切换时更新）
+        let newPosition = forkData.position
+
+        // 检查当前激活分支是否被清空
+        // 注意：激活分支的消息存储在 session.messages 中（分叉点之后的部分）
+        // lists[position].messages 通常为空
+        
+        // 找到分叉点在主消息列表中的位置
+        const forkPointIndex = newMessages.findIndex(m => m.id === forkId)
+        // 如果分叉点不在主消息列表中，跳过这个分叉的处理
+        if (forkPointIndex < 0) {
+          // 分叉点可能在 threads 中，这里先跳过
+          continue
+        }
+        
+        // 检查激活分支是否还有内容（分叉点之后是否还有消息）
+        const activeBranchHasContent = forkPointIndex < newMessages.length - 1
+        
+        // 如果激活分支被清空，且有其他分支有内容，需要切换到那个分支
+        if (!activeBranchHasContent) {
+          // 找到第一个有内容的分支（不是当前激活的分支）
+          const nextValidBranchIndex = newLists.findIndex((list, idx) => idx !== forkData.position && list.messages.length > 0)
+          
+          if (nextValidBranchIndex >= 0) {
+            // 将该分支的消息提升到主消息列表
+            const branchMessages = newLists[nextValidBranchIndex].messages
+            newMessages = [...newMessages, ...branchMessages]
+            
+            // 清空该分支的消息（因为已经提升到主消息列表）
+            newLists[nextValidBranchIndex] = {
+              ...newLists[nextValidBranchIndex],
+              messages: []
+            }
+            
+            // 更新 position 指向新的激活分支
+            newPosition = nextValidBranchIndex
+          }
+        }
+
+        // C. 移除空分支（但保留当前激活的分支，即使它是空的）
+        const validLists = newLists.filter((list, idx) => {
+          // 保留有消息的分支
+          if (list.messages.length > 0) return true
+          // 保留当前激活的分支（position 指向的分支）
+          if (idx === newPosition) return true
+          // 其他空分支移除
+          return false
+        })
+
+        if (validLists.length === 0) {
+          // 如果一个分叉点下的所有分支都空了，那这个分叉点也没意义了
+          delete newMessageForksHash[forkId]
+        } else if (validLists.length === 1 && validLists[0].messages.length === 0) {
+          // 只剩一个空分支，也没意义了
+          delete newMessageForksHash[forkId]
+        } else {
+          // 如果还有有效分支，需要更新 forkData
+          // 关键：我们需要确保 position 指针不越界
+          
+          // 尝试保持新的激活分支（通过 ID 追踪）
+          const activeListId = newLists[newPosition]?.id
+          let finalPosition = validLists.findIndex(l => l.id === activeListId)
+          
+          if (finalPosition === -1) {
+            // 如果激活分支被删没了，就默认选第一个有内容的
+            finalPosition = validLists.findIndex(l => l.messages.length > 0)
+            if (finalPosition === -1) finalPosition = 0
+          }
+
+          newMessageForksHash[forkId] = {
+            ...forkData,
+            lists: validLists,
+            position: Math.max(0, finalPosition)
+          }
+        }
+      }
+
+      // 如果清理完没有任何 fork 数据了，置为 undefined
+      if (Object.keys(newMessageForksHash).length === 0) {
+        newMessageForksHash = undefined
+      }
+    }
+
+    // 3.2 返回更新后的 Session
     return {
       ...session,
-      messages: session.messages.filter((m) => m.id !== messageId),
-      threads: session.threads?.map((thread) => {
-        return {
-          ...thread,
-          messages: thread.messages.filter((m) => m.id !== messageId),
-        }
-      }),
+      messages: newMessages,
+      messageForksHash: newMessageForksHash,
+      // 过滤 threads（如果有）
+      threads: session.threads?.map((thread) => ({
+        ...thread,
+        messages: thread.messages.filter((m) => !idsToDelete.has(m.id)),
+      })),
     }
   })
 }
@@ -486,4 +720,28 @@ export async function recoverSessionList() {
   )
 
   return { recovered: recoveredSessionMetas.length, failed: failedKeys.length }
+}
+
+/**
+ * 恢复会话消息（用于撤销删除操作）
+ * @param sessionId 会话ID
+ * @param messages 要恢复的消息列表
+ * @param messageForksHash 要恢复的分支哈希
+ */
+export async function restoreSessionMessages(
+  sessionId: string,
+  messages: Message[],
+  messageForksHash?: Session['messageForksHash']
+) {
+  return await updateSessionWithMessages(sessionId, (session) => {
+    if (!session) {
+      throw new Error(`session ${sessionId} not found`)
+    }
+    
+    return {
+      ...session,
+      messages,
+      messageForksHash,
+    }
+  })
 }
