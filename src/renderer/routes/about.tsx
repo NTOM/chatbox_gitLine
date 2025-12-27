@@ -3,12 +3,8 @@ import { useDisclosure } from '@mantine/hooks'
 import {
   IconAlertTriangle,
   IconChevronRight,
-  IconClipboard,
-  IconFileText,
   IconHome,
   IconMail,
-  IconMessage2,
-  IconPencil,
 } from '@tabler/icons-react'
 import { createFileRoute } from '@tanstack/react-router'
 import { Fragment, type ReactElement } from 'react'
@@ -56,11 +52,9 @@ function RouteComponent() {
                   </Button>
                 )}
               </Flex>
-              {showForkInfo && (
-                <Text c="chatbox-primary" size="sm" className="bg-chatbox-background p-2 rounded border border-chatbox-border">
-                  这是一个fork分支，不定期维护，主要用于提供另一种git类交互方式，从而进行不同模型答案的比对，满足不同人的需要。
-                </Text>
-              )}
+              <Text c="chatbox-primary" size="sm" className="bg-chatbox-background p-2 rounded border border-chatbox-border">
+                这是一个fork分支，不定期维护，主要用于提供另一种git类交互方式，从而进行不同模型答案的比对，满足不同人的需要。
+              </Text>
               <Text>{t('about-slogan')}</Text>
               <Text c="chatbox-tertiary">{t('about-introduction')}</Text>
 
@@ -110,9 +104,9 @@ function RouteComponent() {
             />
             <ListItem
               icon={<BrandGithub className="w-full h-full" />}
-              title="Github (Tree Version)"
-              link="https://github.com/NTOM/chatbox_gitLine"
-              value="chatbox_gitLine"
+              title="Github (Graph Version)"
+              link="https://github.com/NTOM/chatbox_GraphVersion"
+              value="chatbox_GraphVersion"
             />
           </List>
 
@@ -123,30 +117,10 @@ function RouteComponent() {
               link={`https://chatboxai.app/redirect_app/homepage/${language}`}
             />
             <ListItem
-              icon={<IconClipboard className="w-full h-full" />}
-              title={t('Survey')}
-              link={_i18n.language === 'zh-Hans' ? 'https://jsj.top/f/fcMYEa' : 'https://jsj.top/f/RUMbvY'}
-            />
-            <ListItem
-              icon={<IconPencil className="w-full h-full" />}
-              title={t('Feedback')}
-              link={`https://chatboxai.app/redirect_app/feedback/${language}`}
-            />
-            <ListItem
-              icon={<IconFileText className="w-full h-full" />}
-              title={t('Changelog')}
-              link={`https://chatboxai.app/${language.split('-')[0] || 'en'}/help-center/changelog`}
-            />
-            <ListItem
               icon={<IconMail className="w-full h-full" />}
               title={t('E-mail')}
-              link={`mailto:hi@chatboxai.com`}
-              value="hi@chatboxai.com"
-            />
-            <ListItem
-              icon={<IconMessage2 className="w-full h-full" />}
-              title={t('FAQs')}
-              link={`https://chatboxai.app/${language.split('-')[0] || 'en'}/help-center/chatbox-ai-service-faqs`}
+              link={`mailto:donnyleeqaq@gmail.com`}
+              value="donnyleeqaq@gmail.com"
             />
           </List>
         </Stack>

@@ -9,6 +9,12 @@ import { getLogger } from './util'
 
 const logger = getLogger('store-node')
 
+// 共享原版 Chatbox 的用户数据目录，实现数据互通
+// 这样 Chatbox Tree 和原版 Chatbox 可以共享 API 配置、聊天记录等数据
+const sharedUserData = path.join(app.getPath('appData'), 'xyz.chatboxapp.app')
+app.setPath('userData', sharedUserData)
+logger.info('Using shared userData path:', sharedUserData)
+
 const configPath = path.resolve(app.getPath('userData'), 'config.json')
 
 // 1) 检查配置文件是否合法

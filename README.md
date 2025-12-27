@@ -50,14 +50,14 @@ Easily create new branches from any node to try different prompts or compare res
 > Switch between branches effortlessly to explore different conversation paths.
 > 轻松在不同分支间切换，探索不同的对话路径。
 >
-> ![Branch Switching](doc_tree/分支切换.gif)
+> ![Branch Switching](doc_tree/分支切换.png)
 
 ### 3. Flexible Context (灵活上下文)
 **Custom Reference (自由引用)**
 Select specific nodes to include in the context, giving you full control over what the AI sees.
 选择特定节点作为上下文，完全控制 AI 的输入内容。
 
-![Flexible Quoting](doc_tree/更自由的引用.gif)
+![Flexible Quoting](doc_tree/自由引用.png)
 
 ### 4. Efficient Interaction (高效交互)
 **Toolbar & Quick Actions (工具栏与快捷操作)**
