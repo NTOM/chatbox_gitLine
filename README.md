@@ -30,7 +30,7 @@ We regularly sync code from the pro repo to this repo, and vice versa.
 Visualize your conversation flow like a Git graph. Every question and answer is a node.
 像 Git 图谱一样可视化您的对话流。每个问答都是一个节点，清晰展示对话的上下文和分支结构。
 
-https://github.com/NTOM/chatbox_gitLine/raw/GitTree-Function/doc_tree/分支介绍.mp4
+![Tree View Overview](doc_tree/分支介绍.gif)
 
 > **Display Modes (显示模式)**
 >
@@ -50,14 +50,14 @@ Easily create new branches from any node to try different prompts or compare res
 > Switch between branches effortlessly to explore different conversation paths.
 > 轻松在不同分支间切换，探索不同的对话路径。
 >
-> https://github.com/NTOM/chatbox_gitLine/raw/GitTree-Function/doc_tree/分支切换.mp4
+> ![Branch Switching](doc_tree/分支切换.gif)
 
 ### 3. Flexible Context (灵活上下文)
 **Custom Reference (自由引用)**
 Select specific nodes to include in the context, giving you full control over what the AI sees.
 选择特定节点作为上下文，完全控制 AI 的输入内容。
 
-https://github.com/NTOM/chatbox_gitLine/raw/GitTree-Function/doc_tree/更自由的引用.mp4
+![Flexible Quoting](doc_tree/更自由的引用.gif)
 
 ### 4. Efficient Interaction (高效交互)
 **Toolbar & Quick Actions (工具栏与快捷操作)**
