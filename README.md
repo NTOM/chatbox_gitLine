@@ -80,10 +80,18 @@ Quickly extend the conversation from any point.
 ## Download
 
 ### Tree Version (下载 Tree 版)
-> *Coming Soon...*
+
+| Platform | Download |
+|----------|----------|
+| Windows (x64) | [Chatbox Tree-1.18.1-Setup.exe](release_tree/Chatbox%20Tree-1.18.1-Setup.exe) |
+
+> **Installation Path / 安装路径**: `C:\Program Files\Chatbox Tree`
 >
-> *(I will add the download link for the PC exe version here later.)*
-> *(我会稍后在此处添加 PC exe 版本的下载链接)*
+> This version installs separately from the original Chatbox, so you can use both side-by-side.
+> Compatible with chat history from the original Chatbox.
+>
+> 此版本与原版 Chatbox 独立安装，可同时使用。
+> 兼容原版 Chatbox 的聊天记录。
 
 ### Chatbox Community Edition (Original / 原版下载)
 
