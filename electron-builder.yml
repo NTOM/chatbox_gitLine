@@ -1,5 +1,5 @@
-productName: Chatbox
-appId: xyz.chatboxapp.app
+productName: Chatbox Tree
+appId: xyz.chatboxapp.tree
 asar: true
 asarUnpack: "**\\*.{node,dll}"
 files:
@@ -40,12 +40,9 @@ win:
     - target: nsis
       arch:
         - x64
-        - arm64
   verifyUpdateCodeSignature: false
   artifactName: ${productName}-${version}-Setup.${ext}
-  sign: ./custom_win_sign.js
-  signingHashAlgorithms:
-    - sha256
+  signAndEditExecutable: false
 
 nsis:
   oneClick: false
@@ -68,7 +65,7 @@ linux:
 directories:
   app: release/app
   buildResources: assets
-  output: release/build
+  output: release_tree
 
 extraResources:
   - ./assets/**
