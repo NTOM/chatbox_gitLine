@@ -83,9 +83,13 @@ Quickly extend the conversation from any point.
 
 | Platform | Download |
 |----------|----------|
-| Windows (x64) | [Chatbox Tree-1.18.1-Setup.exe](release_tree/Chatbox%20Tree-1.18.1-Setup.exe) |
+| Windows (x64) | [Chatbox Tree-1.18.1-Setup.exe](https://github.com/NTOM/chatbox_GraphVersion/releases/download/v1.18.1/Chatbox.Tree-1.18.1-Setup.exe) |
+| macOS (Apple Silicon) | [Chatbox Tree-1.18.1-arm64.dmg](https://github.com/NTOM/chatbox_GraphVersion/releases/download/v1.18.1/Chatbox.Tree-1.18.1-arm64.dmg) |
+| macOS (Intel) | [Chatbox Tree-1.18.1.dmg](https://github.com/NTOM/chatbox_GraphVersion/releases/download/v1.18.1/Chatbox.Tree-1.18.1.dmg) |
 
-> **Installation Path / 安装路径**: `C:\Program Files\Chatbox Tree`
+> **Installation Path / 安装路径**:
+> - Windows: `C:\Program Files\Chatbox Tree`
+> - macOS: `/Applications/Chatbox Tree.app`
 >
 > This version installs separately from the original Chatbox, so you can use both side-by-side.
 > Compatible with chat history from the original Chatbox.
