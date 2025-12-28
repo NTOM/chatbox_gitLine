@@ -97,6 +97,14 @@ Quickly extend the conversation from any point.
 > 此版本与原版 Chatbox 独立安装，可同时使用。
 > 兼容原版 Chatbox 的聊天记录。
 
+> **⚠️ macOS Users / macOS 用户注意**
+>
+> If you see "App is damaged" error, run this command in Terminal:
+> 如果提示"应用已损坏"，请在终端执行：
+> ```bash
+> xattr -cr /Applications/Chatbox\ Tree.app
+> ```
+
 ### Chatbox Community Edition (Original / 原版下载)
 
 <table style="width: 100%">
