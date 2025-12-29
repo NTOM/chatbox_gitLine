@@ -175,3 +175,6 @@ electron-builder.env
 **/routeTree.gen.ts
 
 .env.sentry-build-plugin
+
+# Electron builder output
+release_tree/
